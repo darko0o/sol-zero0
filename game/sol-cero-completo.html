@@ -1,0 +1,940 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOL ZERO — Protocol Ares-7</title>
+<style>
+  :root{
+    --bg:#0b0714;
+    --panel:rgba(18, 12, 32, 0.90);
+    --panel-border:rgba(208, 191, 255, 0.26);
+    --ink:#f8f9fa;
+    --dim:#adb5bd;
+    --gray-dark:#343a40;
+    --gray-mid:#868e96;
+    --accent:#be4bdb;
+    --accent-soft:rgba(190, 75, 219, 0.22);
+    --teal:#d0bfff;
+    --amber:#e599f7;
+    --violet:#b197fc;
+    --blue:#9775fa;
+    --indigo:#7950f2;
+    --bad:#f06595;
+    --line:rgba(208, 191, 255, 0.22);
+    --mono:"Cascadia Mono","Consolas",ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:#07040d;color:var(--ink);font-family:var(--mono);
+    display:grid;place-items:center;overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  #stage{
+    position:relative;width:min(100vw,calc(100vh * 16 / 9));aspect-ratio:16/9;
+    overflow:hidden;background:#0b0714;box-shadow:0 0 120px rgba(15, 6, 30, .98);
+    user-select:none;
+  }
+  canvas{
+    display:block;width:100%;height:100%;
+    image-rendering:pixelated;
+    image-rendering:crisp-edges;
+  }
+
+  /* ---------- ATMOSPHERIC VIGNETTE ---------- */
+  .fx{
+    position:absolute;inset:0;pointer-events:none;z-index:30;
+    background:radial-gradient(ellipse at 50% 48%, transparent 70%, rgba(9, 4, 18, .42) 100%);
+    transition:box-shadow .5s ease;
+  }
+  #stage.panic .fx{
+    box-shadow:inset 0 0 65px rgba(190, 75, 219, 0.38);
+  }
+  #stage.co2-warn .fx{
+    box-shadow:inset 0 0 70px rgba(229, 153, 247, 0.42);
+  }
+
+  /* ---------- LARGER, READABLE HUD IN PURPLE / NEON PURPLE / GRAY ---------- */
+  #hud{
+    position:absolute;inset:0;z-index:10;pointer-events:none;padding:0.9% 1.3% 0.7%;
+    display:flex;flex-direction:column;justify-content:space-between;
+    font-size:clamp(10.5px, 1.08vw, 15.2px);
+  }
+  .hud-upper{
+    display:flex;flex-direction:column;gap:.48em;
+  }
+  .hud-top{
+    display:grid;grid-template-columns:16.8em 1fr 21.8em;align-items:start;gap:.65em;
+  }
+  .hud-card{
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    border-radius:6px;
+    padding:.48em .72em;
+    backdrop-filter:blur(6px);
+    box-shadow:0 4px 18px rgba(8, 4, 16, 0.65);
+  }
+
+  /* Left Block: Sol, Clock, Rest Window, Weather & Linear Radar */
+  .sol-card{display:flex;flex-direction:column;gap:.28em}
+  .sol-head{display:flex;align-items:center;justify-content:space-between;gap:.35em}
+  .sol-title-wrap{display:flex;align-items:baseline;gap:.35em}
+  .sol-title-wrap .lbl{color:var(--dim);font-size:.76em;letter-spacing:.12em;font-weight:700}
+  .sol-title-wrap b{font-size:1.38em;color:var(--ink);line-height:1}
+  .sol-title-wrap .sub{color:var(--amber);font-size:.8em;font-weight:800;letter-spacing:.08em}
+  .clock{color:#fff;font-size:.92em;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.05em}
+  .clock.rest-mode{color:var(--amber);text-shadow:0 0 8px rgba(229, 153, 247, .65)}
+  .sol-subrow{display:flex;align-items:center;justify-content:space-between;gap:.35em;font-size:.72em}
+  .diff-badge{
+    padding:.1em .45em;border-radius:3px;
+    background:rgba(190, 75, 219, .22);color:var(--amber);font-weight:700;letter-spacing:.08em;
+    border:1px solid rgba(229, 153, 247, .35);
+  }
+  .weather{color:var(--dim);letter-spacing:.05em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+  .weather.danger{color:var(--amber);font-weight:800}
+  .threat-pill{
+    font-size:.72em;letter-spacing:.05em;padding:.18em .48em;border-radius:3px;
+    background:rgba(255,255,255,.05);color:#dee2e6;text-align:left;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    border:1px solid rgba(208, 191, 255, .15);
+  }
+  .threat-pill.warn{background:rgba(151, 117, 250, .2);color:var(--teal);font-weight:700;border-color:var(--blue)}
+  .threat-pill.alert{background:rgba(190, 75, 219, .32);color:#f3d9fa;font-weight:800;border-color:var(--amber);animation:pulse .8s infinite}
+  .threat-pill.stun{background:rgba(151, 117, 250, .24);color:var(--teal);font-weight:700}
+
+  /* Integrated Top-Left Radar */
+  .radar-wrap{
+    display:flex;align-items:center;gap:.48em;padding-top:.22em;margin-top:.08em;
+    border-top:1px solid rgba(208, 191, 255, .14);
+  }
+  .radar-lbl{font-size:.66em;letter-spacing:.12em;color:var(--dim);white-space:nowrap;font-weight:700}
+  .radar-track{
+    position:relative;flex:1;height:7px;background:rgba(255,255,255,.08);
+    border-radius:3px;overflow:hidden;
+  }
+  .radar-dome{
+    position:absolute;left:3.5%;width:14.5%;top:0;bottom:0;
+    background:rgba(151, 117, 250, .28);border-right:1px solid rgba(208, 191, 255, .55);
+  }
+  .radar-shelter{
+    position:absolute;left:81%;width:4.5%;top:0;bottom:0;
+    background:rgba(229, 153, 247, .28);
+  }
+  .radar-dot{
+    position:absolute;top:50%;width:6px;height:6px;transform:translate(-50%,-50%);
+    border-radius:50%;
+  }
+  .radar-dot.player{
+    width:7px;height:7px;background:#ffffff;border:2px solid var(--accent);z-index:4;
+  }
+  .radar-dot.enemy{
+    width:6px;height:6px;background:var(--amber);box-shadow:0 0 6px var(--accent);z-index:3;
+  }
+  .radar-dot.enemy.stun{background:var(--teal);box-shadow:0 0 5px var(--teal)}
+  .radar-dot.station{width:4px;height:4px;opacity:.8;border-radius:1px}
+  .radar-dot.station.mission{
+    width:7px;height:7px;opacity:1;border:1px solid #fff;box-shadow:0 0 6px var(--amber);
+    animation:pulse .9s infinite;z-index:2;
+  }
+
+  /* Center Block: HIGH-VISIBILITY PRIORITY MISSION PANEL */
+  .mission-card{
+    position:relative;
+    display:flex;flex-direction:column;align-items:center;text-align:center;
+    gap:.28em;padding:.52em .95em;
+    background:linear-gradient(180deg, rgba(43, 18, 68, 0.94), rgba(18, 11, 32, 0.90));
+    border:1px solid rgba(229, 153, 247, 0.65);
+    border-top:3px solid var(--accent);
+    box-shadow:0 0 26px rgba(190, 75, 219, 0.28);
+    transition:all .3s ease;
+  }
+  .mission-card.done{
+    background:linear-gradient(180deg, rgba(32, 22, 58, 0.92), rgba(16, 12, 28, 0.88));
+    border-color:rgba(208, 191, 255, 0.65);
+    border-top-color:var(--teal);
+    box-shadow:0 0 22px rgba(151, 117, 250, 0.25);
+  }
+  .mission-header{
+    display:flex;align-items:center;gap:.48em;
+    font-size:.72em;letter-spacing:.18em;font-weight:800;color:var(--amber);
+  }
+  .mission-card.done .mission-header{color:var(--teal)}
+  .mission-dot{
+    width:8px;height:8px;border-radius:50%;background:var(--amber);
+    box-shadow:0 0 9px var(--accent);animation:pulse 1.1s infinite;
+  }
+  .mission-card.done .mission-dot{background:var(--teal);box-shadow:0 0 8px var(--teal);animation:none}
+  .objective{
+    color:#ffffff;letter-spacing:.05em;font-size:.94em;font-weight:800;
+    text-shadow:0 1px 10px rgba(190, 75, 219, 0.55);
+  }
+  .mission-card.done .objective{color:var(--teal);text-shadow:none}
+  .mission-steps{
+    display:flex;gap:.48em;flex-wrap:wrap;justify-content:center;
+  }
+  .m-chip{
+    display:inline-flex;align-items:center;gap:.32em;
+    padding:.15em .62em;border-radius:3px;font-size:.74em;font-weight:800;letter-spacing:.05em;
+    background:rgba(190, 75, 219, 0.20);border:1px solid rgba(229, 153, 247, 0.6);color:#f3d9fa;
+  }
+  .m-chip.ok{
+    background:rgba(151, 117, 250, 0.22);border-color:var(--teal);color:var(--teal);
+  }
+  .thought-line{
+    font-size:.72em;color:#d0bfff;font-style:italic;letter-spacing:.03em;opacity:.92;
+  }
+
+  /* Right Block: ECLSS Indicators (O2, Pressure, CO2) + Biometrics (RAD, MORALE, FATIGUE, DUST) */
+  .meters-card{display:flex;flex-direction:column;gap:.28em}
+  .eclss-pills{
+    display:grid;grid-template-columns:repeat(3, 1fr);gap:.34em;
+    padding-bottom:.22em;border-bottom:1px solid rgba(208, 191, 255, .14);
+  }
+  .eclss-pill{
+    display:flex;flex-direction:column;align-items:center;
+    padding:.18em .34em;background:rgba(255,255,255,.04);border:1px solid rgba(208, 191, 255, .18);
+    border-radius:4px;font-size:.7em;
+  }
+  .eclss-pill span{color:var(--dim);letter-spacing:.06em;font-size:.88em;font-weight:700}
+  .eclss-pill b{color:var(--teal);font-size:1.15em;font-variant-numeric:tabular-nums}
+  .eclss-pill.warn{border-color:var(--amber);background:rgba(190, 75, 219, .18)}
+  .eclss-pill.warn b{color:var(--amber)}
+  .eclss-pill.crit{border-color:var(--bad);background:rgba(190, 75, 219, .32);animation:pulse .9s infinite}
+  .eclss-pill.crit b{color:#f3d9fa}
+
+  .meters-grid{
+    display:grid;grid-template-columns:1fr 1fr;gap:.26em .6em;
+  }
+  .meter{display:grid;grid-template-columns:3.8em 1fr 2.6em;align-items:center;gap:.34em;font-size:.72em}
+  .meter>span{color:var(--dim);letter-spacing:.04em;font-weight:700}
+  .meter>b{text-align:right;font-weight:800;font-variant-numeric:tabular-nums;color:var(--ink)}
+  .bar{height:5.5px;background:rgba(255,255,255,.12);overflow:hidden;border-radius:3px}
+  .bar i{display:block;height:100%;width:100%;background:var(--teal);transition:width .2s linear,background .3s}
+  .bar.rad i{background:var(--amber)}
+  .bar.morale i{background:var(--violet)}
+  .bar.fatigue i{background:var(--blue)}
+  .meter.low b,.meter.low>span{color:var(--amber)}
+  .meter.low .bar i{background:var(--accent);animation:pulse 1s infinite}
+
+  .suit-bar{
+    display:flex;justify-content:space-between;align-items:center;gap:.35em;flex-wrap:wrap;
+    padding-top:.2em;border-top:1px solid rgba(208, 191, 255, .14);
+    font-size:.68em;letter-spacing:.04em;
+  }
+  .emp-tag{color:var(--teal);font-weight:800}
+  .emp-tag.cd{color:var(--dim);font-weight:500}
+  .decoy-tag{color:var(--amber);font-weight:700}
+  .decoy-tag.cd{color:var(--dim);font-weight:500}
+  .pwr-tag{color:var(--violet);font-weight:800}
+  .pwr-tag.neg{color:var(--amber);animation:pulse 1s infinite}
+
+  /* ============================================================================
+     CIRCULAR RING GAUGES IN TOP SUB-BAR (PURPLE / NEON PURPLE / GRAY)
+     ============================================================================ */
+  .hud-subbar{
+    display:flex;align-items:flex-start;justify-content:space-between;gap:.65em;
+    transition:opacity .25s;
+  }
+  #hud.mini .hud-subbar{opacity:0;pointer-events:none}
+
+  .rings-dock{
+    display:flex;align-items:center;gap:.72em;
+    background:rgba(16, 11, 29, 0.92);
+    border:1px solid rgba(208, 191, 255, 0.30);
+    border-radius:8px;
+    padding:.44em .85em;
+    box-shadow:0 6px 24px rgba(5, 2, 12, .7);
+    pointer-events:auto;
+  }
+  .ring-main-wrap{
+    display:flex;flex-direction:column;align-items:center;gap:.2em;
+    padding-right:.65em;border-right:1px solid rgba(208, 191, 255, 0.20);
+  }
+  .rings-grid{
+    display:flex;align-items:center;gap:.58em;
+  }
+  .ring-item{
+    display:flex;flex-direction:column;align-items:center;gap:.18em;
+    position:relative;
+  }
+  .ring-circle{
+    position:relative;
+    width:3.6em;height:3.6em;
+    border-radius:50%;
+    background:conic-gradient(var(--ring-fill, #9775fa) calc(var(--pct, 50) * 1%), var(--ring-track, rgba(208, 191, 255, 0.22)) 0);
+    display:grid;place-items:center;
+    box-shadow:0 2px 10px rgba(0,0,0,.55);
+    transition:transform .2s, box-shadow .2s;
+  }
+  .ring-main-wrap .ring-circle{
+    width:4.8em;height:4.8em;
+  }
+  .ring-circle::after{
+    content:"";
+    position:absolute;
+    inset:22%;
+    border-radius:50%;
+    background:#120b20;
+    box-shadow:inset 0 1px 5px rgba(0,0,0,.8);
+  }
+  .ring-val{
+    position:relative;z-index:2;
+    font-size:.94em;font-weight:800;color:#ffffff;
+    font-variant-numeric:tabular-nums;letter-spacing:-.02em;
+  }
+  .ring-main-wrap .ring-val{
+    font-size:1.25em;
+  }
+  .ring-lbl{
+    font-size:.64em;font-weight:800;letter-spacing:.08em;color:#dee2e6;
+    white-space:nowrap;
+  }
+  .ring-item.req .ring-circle{
+    box-shadow:0 0 14px var(--amber);
+    transform:scale(1.06);
+  }
+  .ring-item.req .ring-lbl{color:var(--amber)}
+  .ring-item.crit .ring-circle{
+    --ring-fill:#be4bdb !important;
+    box-shadow:0 0 16px rgba(229, 153, 247, .85);
+    animation:pulse .85s infinite;
+  }
+  .ring-item.crit .ring-val,.ring-item.crit .ring-lbl{color:var(--amber)}
+  .ring-item.offline .ring-circle{
+    opacity:.45;
+  }
+
+  /* Right HUD Column: NASA Protocol Buttons + Stun Feed */
+  .right-hud-col{
+    display:flex;flex-direction:column;align-items:flex-end;gap:.44em;
+    pointer-events:auto;
+  }
+  .nasa-btns{
+    display:flex;gap:.42em;flex-wrap:wrap;justify-content:flex-end;
+  }
+  .nasa-btn{
+    font-family:var(--mono);font-size:.72em;font-weight:800;letter-spacing:.07em;
+    padding:.44em .76em;border-radius:4px;cursor:pointer;
+    background:rgba(20, 13, 36, 0.94);color:var(--ink);
+    border:1px solid rgba(177, 151, 252, 0.45);
+    display:inline-flex;align-items:center;gap:.38em;
+    transition:all .16s;
+  }
+  .nasa-btn:hover{border-color:var(--amber);color:var(--amber);background:rgba(190, 75, 219, .20)}
+  .nasa-btn kbd{
+    background:rgba(151, 117, 250, .28);color:var(--teal);padding:.06em .38em;border-radius:3px;font-size:.94em;
+  }
+  .nasa-btn.alert{
+    border-color:var(--amber);background:rgba(72, 20, 88, 0.94);color:#f3d9fa;
+    animation:pulse .9s infinite;
+  }
+  .nasa-btn.warn{
+    border-color:var(--violet);background:rgba(48, 24, 72, 0.94);color:var(--amber);
+  }
+
+  /* SIDE STUN FEED PANEL */
+  .stun-feed{
+    display:flex;flex-direction:column;gap:.24em;
+    min-width:19em;padding:.5em .82em;
+    background:linear-gradient(90deg, rgba(36, 18, 58, 0.96), rgba(18, 11, 32, 0.96));
+    border:1px solid var(--violet);border-left:4px solid var(--amber);
+    border-radius:5px;box-shadow:0 6px 22px rgba(0,0,0,.7);
+    pointer-events:none;
+    transition:opacity .25s, transform .25s;
+  }
+  .stun-feed.hidden{display:none!important}
+  .stun-feed-top{
+    display:flex;justify-content:space-between;align-items:center;gap:.6em;
+    font-size:.76em;font-weight:800;color:var(--amber);letter-spacing:.08em;
+  }
+  .stun-feed-top b{color:#fff;font-variant-numeric:tabular-nums}
+  .stun-feed-sub{font-size:.66em;color:#d0bfff;letter-spacing:.05em}
+  .stun-bar{height:5px;background:rgba(255,255,255,.14);border-radius:3px;overflow:hidden}
+  .stun-bar i{display:block;height:100%;background:var(--amber);transition:width .1s linear}
+
+  /* Minimal Footer Bar */
+  .hud-foot{
+    display:flex;justify-content:space-between;align-items:center;
+    color:var(--dim);font-size:.68em;letter-spacing:.07em;
+    padding:.28em .72em;background:rgba(12, 8, 22, 0.80);
+    border-radius:4px;border:1px solid rgba(208, 191, 255, .14);
+  }
+  .foot-left{display:flex;gap:1.1em;align-items:center;flex-wrap:wrap}
+  .logs{color:#dee2e6;font-weight:700}
+  .bond-status{color:var(--amber);font-weight:700}
+  .shield-status{color:var(--teal);font-weight:800}
+  .hint{opacity:.92;color:#ced4da}
+
+  .prompt{
+    position:absolute;left:50%;bottom:8%;transform:translateX(-50%);
+    display:flex;align-items:center;gap:.65em;padding:.46em 1.05em;
+    background:rgba(18, 11, 32, 0.96);border:1.5px solid var(--amber);border-radius:4px;
+    letter-spacing:.09em;font-size:.86em;font-weight:700;box-shadow:0 6px 24px rgba(0,0,0,.75);
+    animation:rise .2s ease both;
+  }
+  .prompt kbd{
+    font-family:var(--mono);background:var(--accent);color:#ffffff;font-weight:800;
+    padding:.12em .5em;border-radius:3px;font-size:.9em;letter-spacing:0;
+  }
+
+  /* Top-Center Toast */
+  .toast{
+    position:absolute;left:50%;top:30%;transform:translateX(-50%) translateY(-6px);
+    max-width:66%;text-align:center;padding:.55em 1.15em;background:rgba(16, 10, 28, 0.96);
+    border:1px solid rgba(208, 191, 255, .24);border-left:4px solid var(--accent);border-radius:4px;
+    font-size:.84em;line-height:1.42;letter-spacing:.03em;box-shadow:0 8px 26px rgba(0,0,0,.72);
+    opacity:0;transition:opacity .28s,transform .28s;pointer-events:none;z-index:15;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.bad{border-left-color:var(--amber)}
+  .toast.good{border-left-color:var(--teal)}
+  .toast.emo{border-left-color:var(--violet)}
+
+  .banner{
+    position:absolute;left:0;right:0;top:36%;text-align:center;opacity:0;transition:opacity .5s;
+    pointer-events:none;background:linear-gradient(90deg, transparent, rgba(16, 9, 30, .92) 28%, rgba(16, 9, 30, .92) 72%, transparent);
+    padding:1em 0;z-index:14;
+  }
+  .banner.show{opacity:1}
+  .banner h3{margin:0 0 .3em;font-size:.88em;letter-spacing:.42em;color:var(--amber);font-weight:700}
+  .banner h2{margin:0;font-size:2.6em;letter-spacing:.15em;font-weight:800;line-height:1;color:#fff}
+  .banner p{margin:.5em 0 0;color:var(--teal);letter-spacing:.1em;font-size:.94em;font-weight:700}
+
+  /* ---------- CINEMATIC SOL TRANSITION ---------- */
+  .sol-trans{
+    position:absolute;inset:0;z-index:28;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:radial-gradient(circle at 50% 68%, #3b1c63 0%, #140b24 65%, #07040d 100%);
+    opacity:0;pointer-events:none;transition:opacity .55s ease;
+  }
+  .sol-trans.active{opacity:1;pointer-events:auto}
+  .sol-sky-box{
+    position:relative;width:340px;height:130px;margin-bottom:1.2em;
+    border-bottom:2px solid var(--amber);overflow:hidden;
+  }
+  .sol-orb{
+    position:absolute;left:50%;bottom:-24px;width:46px;height:46px;margin-left:-23px;
+    border-radius:50%;background:radial-gradient(circle, #fff 18%, #e599f7 55%, rgba(190, 75, 219, 0) 76%);
+    box-shadow:0 0 38px #be4bdb;
+  }
+  .sol-trans.active .sol-orb{
+    animation:sunRiseArc 3.2s cubic-bezier(.22,.68,.35,1) forwards;
+  }
+  @keyframes sunRiseArc{
+    0%{transform:translate(-110px, 28px) scale(.8);opacity:.2}
+    45%{transform:translate(0px, -58px) scale(1.08);opacity:1}
+    100%{transform:translate(95px, -36px) scale(1);opacity:.95}
+  }
+  .sol-trans-kicker{color:var(--amber);letter-spacing:.38em;font-size:.86em;font-weight:800;margin-bottom:.4em}
+  .sol-trans-num{
+    font-size:clamp(36px, 5.2vw, 72px);font-weight:800;letter-spacing:.14em;color:#fff;
+    text-shadow:0 0 34px rgba(190, 75, 219, .65);margin:0;
+  }
+  .sol-trans-sub{color:var(--teal);letter-spacing:.22em;font-size:1em;margin:.4em 0 1.3em;font-weight:700}
+  .sol-trans-report{
+    display:grid;grid-template-columns:repeat(3, 1fr);gap:.85em;max-width:680px;width:92%;
+    background:rgba(20, 12, 36, 0.90);border:1px solid var(--line);padding:1em 1.3em;border-radius:6px;
+    font-size:.84em;text-align:center;
+  }
+  .sol-trans-report div span{display:block;color:var(--dim);font-size:.88em;margin-bottom:.25em}
+  .sol-trans-report div b{color:var(--ink);font-size:1.25em}
+
+  /* ---------- SCREENS & MODALS ---------- */
+  .screen{
+    position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;padding:3% 5%;
+    background:linear-gradient(180deg,rgba(11, 7, 20, .90),rgba(8, 5, 15, .97));
+    overflow-y:auto;
+  }
+  .screen.title{background:linear-gradient(180deg,rgba(14, 8, 26, .48),rgba(9, 5, 18, .90))}
+  .hidden{display:none!important}
+  .kicker{color:var(--amber);letter-spacing:.38em;font-size:clamp(10.5px,1.05vw,15px);margin-bottom:1.1em;font-weight:700}
+  .title h1{
+    margin:0;font-size:clamp(48px,8.6vw,132px);line-height:.9;letter-spacing:.06em;font-weight:800;
+    text-shadow:0 0 55px rgba(190, 75, 219, .45)
+  }
+  .title h1 span{color:var(--amber)}
+  .tagline{margin:1.1em 0 0;color:#dee2e6;letter-spacing:.14em;font-size:clamp(12px,1.2vw,17.5px);line-height:1.65}
+
+  .diff-selector{
+    margin-top:1.4em;display:flex;flex-direction:column;align-items:center;gap:.5em;
+    background:rgba(18, 12, 32, .88);border:1px solid var(--panel-border);padding:.8em 1.4em;border-radius:6px;
+  }
+  .diff-selector .diff-lbl{font-size:.8em;letter-spacing:.25em;color:var(--dim);font-weight:700}
+  .diff-btns{display:flex;gap:.55em;flex-wrap:wrap;justify-content:center}
+  .diff-btn{
+    font-family:var(--mono);font-size:clamp(10.5px,.96vw,13.5px);letter-spacing:.15em;
+    padding:.52em 1.1em;background:rgba(255,255,255,.04);color:var(--dim);
+    border:1px solid var(--line);border-radius:4px;cursor:pointer;transition:all .18s;
+  }
+  .diff-btn:hover{border-color:var(--amber);color:var(--ink)}
+  .diff-btn.active{background:var(--accent-soft);border-color:var(--amber);color:#fff;font-weight:800}
+  .diff-desc{font-size:.82em;color:#ced4da;letter-spacing:.06em}
+
+  .actions{display:flex;gap:.8em;flex-wrap:wrap;justify-content:center;margin-top:1.4em}
+  .btn{
+    font-family:var(--mono);font-size:clamp(11px,1.02vw,14.5px);letter-spacing:.16em;
+    padding:.75em 1.45em;background:rgba(255,255,255,.05);color:var(--ink);
+    border:1px solid var(--line);border-radius:4px;cursor:pointer;transition:all .18s;text-transform:uppercase;
+    font-weight:700;
+  }
+  .btn:hover{border-color:var(--amber);color:var(--amber);background:var(--accent-soft)}
+  .btn.primary{background:var(--accent);border-color:var(--amber);color:#ffffff;font-weight:800;box-shadow:0 0 18px rgba(190, 75, 219, .4)}
+  .btn.primary:hover{filter:brightness(1.15);color:#ffffff}
+  .btn.ghost{color:var(--dim)}
+  .title-foot{position:absolute;bottom:2.2%;left:0;right:0;color:var(--dim);font-size:clamp(9.5px,.86vw,12.5px);letter-spacing:.15em}
+
+  /* Intro & Briefing */
+  .intro{background:#080510;align-items:flex-start;justify-content:center;padding:6% 12%}
+  .intro-lines{max-width:780px;width:100%;text-align:left;
+    font-size:clamp(13.5px,1.35vw,19.5px);line-height:1.95;color:#dee2e6}
+  .intro-lines .ln{opacity:0;transform:translateY(8px);transition:opacity .75s ease,transform .75s ease;margin:.34em 0}
+  .intro-lines .ln.on{opacity:1;transform:none}
+  .intro-lines .ln.hl{color:var(--amber);font-weight:700}
+  .intro-lines .ln.small{color:var(--dim);font-size:.86em;letter-spacing:.08em}
+  .intro-actions{margin-top:2.2em;display:flex;gap:.85em;align-items:center}
+  .intro .kicker{position:absolute;top:6%;left:12%;margin:0}
+
+  .brief{background:linear-gradient(180deg,rgba(12, 8, 22, .95),rgba(8, 5, 15, .99))}
+  .brief-grid{display:grid;grid-template-columns:1.15fr 1fr;gap:2.2em;text-align:left;
+    max-width:1040px;width:100%;align-items:start}
+  .brief h2,.dossier h2,.end h2{letter-spacing:.2em;font-size:clamp(17px,1.75vw,25px);margin:0 0 .5em;font-weight:800}
+  .brief h2 em,.end h2 em{color:var(--amber);font-style:normal}
+  .brief p{color:#ced4da;line-height:1.62;font-size:clamp(10.5px,.96vw,13.8px);margin:.44em 0}
+  .brief p.hl{color:var(--ink)}
+  .brief .divider{height:1px;background:var(--line);margin:.75em 0}
+  .brief h4{letter-spacing:.2em;color:var(--amber);font-size:.82em;margin:0 0 .45em;font-weight:800}
+  .brief .sys-li{display:flex;gap:.65em;align-items:baseline;padding:.26em 0;border-bottom:1px dashed rgba(208, 191, 255, .14);
+    color:#dee2e6;font-size:clamp(10px,.9vw,12.8px)}
+  .brief .sys-li b{color:var(--teal);letter-spacing:.05em;font-weight:700;min-width:12em}
+  .brief .sys-li span{color:var(--dim)}
+  .keys{display:grid;grid-template-columns:auto 1fr;gap:.3em .95em;margin:.45em 0 .95em;
+    font-size:clamp(10px,.88vw,12.5px);color:#ced4da}
+  .keys kbd{font-family:var(--mono);color:var(--amber);border:1px solid rgba(229, 153, 247, .45);padding:.08em .45em;text-align:center;border-radius:3px}
+  .brief .actions{justify-content:flex-start;margin-top:0}
+
+  .dossier{justify-content:flex-start;align-items:stretch;text-align:left;padding:5% 8%}
+  .dossier-body{max-width:880px;margin:0 auto;width:100%;font-size:clamp(12px,1.06vw,15px);line-height:1.75;color:#ced4da}
+  .dossier h1{font-size:clamp(24px,2.6vw,36px);letter-spacing:.14em;margin:0 0 .2em;color:var(--ink)}
+  .dossier .sub{color:var(--amber);letter-spacing:.28em;font-size:.84em;margin-bottom:1.8em;font-weight:700}
+  .dossier h3{letter-spacing:.22em;color:var(--teal);font-size:.9em;margin:1.8em 0 .6em;font-weight:700;
+    padding-top:.9em;border-top:1px solid var(--line)}
+  .dossier p{margin:.5em 0}
+  .dossier .em{color:var(--ink);font-weight:700}
+  .dossier .actions{margin-top:1.6em;justify-content:flex-start}
+
+  /* Modals: Tutorial, Log, Crew Emotion, and 3 NASA Protocols */
+  .screen.logview{background:rgba(9, 5, 18, .88);backdrop-filter:blur(6px)}
+  .log-card{
+    max-width:740px;width:100%;text-align:left;padding:1.7em 2.1em;
+    background:rgba(18, 11, 32, .98);border:1px solid var(--line);border-radius:7px;position:relative;
+    box-shadow:0 18px 54px rgba(0,0,0,.85);
+  }
+  .log-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--accent)}
+  .log-card.emo-card:before{background:var(--amber)}
+  .log-card.nasa-card:before{background:var(--blue)}
+  .log-card.tut-card:before{background:var(--teal)}
+  .log-card .who{color:var(--amber);letter-spacing:.2em;font-size:.8em;margin-bottom:.4em;font-weight:800}
+  .log-card.emo-card .who{color:var(--amber)}
+  .log-card.nasa-card .who{color:var(--teal)}
+  .log-card.tut-card .who{color:var(--teal)}
+  .log-card h3{margin:0 0 .65em;letter-spacing:.07em;font-size:clamp(16px,1.45vw,21.5px);color:#fff}
+  .log-card .body{
+    width:100%;white-space:pre-wrap;color:#dee2e6;line-height:1.68;font-family:var(--mono);
+    font-size:clamp(11px,.98vw,14px);border:0;background:none;padding:0;
+  }
+  .tut-keys-box{
+    margin-top:1em;padding:.65em .95em;background:rgba(151, 117, 250, .14);
+    border:1px solid rgba(208, 191, 255, .35);border-radius:4px;
+    color:var(--amber);font-size:clamp(10.5px,.94vw,13.2px);font-weight:800;letter-spacing:.06em;
+  }
+  .emo-choices{display:flex;flex-direction:column;gap:.55em;margin-top:1.1em}
+  .emo-choice-btn{
+    display:flex;flex-direction:column;gap:.28em;
+    text-align:left;font-family:var(--mono);font-size:clamp(10.5px,.96vw,13.5px);line-height:1.45;
+    padding:.72em 1em;background:rgba(151, 117, 250, .10);color:var(--ink);
+    border:1px solid rgba(208, 191, 255, .32);border-radius:4px;cursor:pointer;transition:all .18s;
+  }
+  .emo-choice-btn:hover{background:rgba(190, 75, 219, .24);border-color:var(--amber);transform:translateX(3px)}
+  .emo-choice-btn.nasa-opt{
+    background:rgba(121, 80, 242, .12);border-color:rgba(177, 151, 252, .36);
+  }
+  .emo-choice-btn.nasa-opt:hover{
+    background:rgba(190, 75, 219, .24);border-color:var(--amber);
+  }
+  .emo-choice-btn b{color:var(--amber);font-size:1.04em}
+  .emo-choice-btn small{color:var(--dim);font-size:.9em}
+
+  .emo-reply-box{
+    margin-top:1em;padding:.85em 1.05em;background:rgba(151, 117, 250, .14);
+    border-left:4px solid var(--amber);color:#f3d9fa;font-size:clamp(11px,.98vw,13.8px);line-height:1.62;
+  }
+  .log-card .actions{justify-content:flex-end;margin-top:1.2em}
+
+  /* Power Budget & ECLSS Rows */
+  .power-summary{
+    display:grid;grid-template-columns:repeat(3, 1fr);gap:.65em;margin:.85em 0;
+    padding:.7em;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:5px;
+    text-align:center;font-size:.88em;
+  }
+  .power-summary span{display:block;color:var(--dim);font-size:.84em;margin-bottom:.22em}
+  .power-summary b{font-size:1.25em;color:var(--ink)}
+  .load-list{display:flex;flex-direction:column;gap:.5em;margin-top:.65em}
+  .load-row{
+    display:flex;align-items:center;justify-content:space-between;gap:.85em;
+    padding:.6em .9em;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:4px;
+    font-size:.86em;
+  }
+  .load-row.off{opacity:.65;border-color:rgba(190, 75, 219, .45)}
+  .load-info b{color:var(--ink);display:block;margin-bottom:.16em}
+  .load-info span{color:var(--dim);font-size:.9em}
+  .load-toggle{
+    font-family:var(--mono);font-size:.9em;font-weight:800;padding:.45em .88em;
+    border-radius:4px;cursor:pointer;border:1px solid var(--teal);
+    background:rgba(151, 117, 250, .20);color:var(--teal);min-width:10.5em;
+  }
+  .load-row.off .load-toggle{
+    border-color:var(--amber);background:rgba(190, 75, 219, .22);color:var(--amber);
+  }
+
+  /* End + Pause */
+  .end .end-kicker{color:var(--amber);letter-spacing:.36em;font-size:.88em;margin-bottom:1em;font-weight:700}
+  .end h1{font-size:clamp(30px,4.6vw,64px);letter-spacing:.1em;margin:0 0 .5em;line-height:1}
+  .end .end-body{max-width:680px;color:#dee2e6;line-height:1.85;font-size:clamp(12px,1.08vw,15.5px)}
+  .end .stats{display:flex;gap:2em;margin:1.8em 0 1em;color:var(--dim);font-size:.84em;letter-spacing:.14em;flex-wrap:wrap;justify-content:center}
+  .end .stats b{display:block;color:var(--ink);font-size:1.85em;font-weight:800;margin-top:.2em;letter-spacing:.04em}
+  .end .actions{margin-top:1.4em}
+  .pause-card{text-align:center}
+  .pause-card h1{letter-spacing:.45em;font-weight:700;font-size:clamp(22px,2.8vw,36px);margin:0 0 .5em}
+  .pause-card p{color:var(--dim);letter-spacing:.18em;font-size:.86em;margin:0 0 1.8em}
+
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.32}}
+  @keyframes rise{from{opacity:0;transform:translateX(-50%) translateY(6px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+  ::-webkit-scrollbar{width:8px}
+  ::-webkit-scrollbar-track{background:#0b0714}
+  ::-webkit-scrollbar-thumb{background:#3b2063}
+</style>
+</head>
+<body>
+<!-- Attached Background Music Track + Local Server Fallback -->
+<audio id="bgm" loop preload="auto">
+  <source src="bgm.mp3" type="audio/mpeg">
+  <source src="file:///C:/Users/HP/.gemini/antigravity/brain/4da4218f-cdfe-4cf4-912c-e3bc4da41878/.user_uploaded/uploaded_media_1794750466928.mp3" type="audio/mpeg">
+</audio>
+
+<div id="stage">
+  <canvas id="game" width="960" height="540"></canvas>
+
+  <!-- TOP HUD WITH CIRCULAR RING GAUGES & CLEAR GROUND VIEW -->
+  <div id="hud" class="hidden">
+    <div class="hud-upper">
+      <div class="hud-top">
+        <!-- Left: Sol, Clock, Rest Window, Weather, Threat & Radar -->
+        <div class="hud-card sol-card">
+          <div class="sol-head">
+            <div class="sol-title-wrap">
+              <span class="lbl">SOL</span><b id="hud-sol">01</b><span class="sub" id="hud-solname">RELIEF</span>
+            </div>
+            <span class="clock" id="hud-clock">T-02:00</span>
+          </div>
+          <div class="sol-subrow">
+            <span class="diff-badge" id="hud-diff">TECHNICIAN</span>
+            <span class="weather" id="hud-weather">DOME · PRESSURE STABLE</span>
+          </div>
+          <div class="threat-pill" id="hud-threat">SAFE ZONE · 1 STALKER OUTSIDE</div>
+          <div class="radar-wrap">
+            <span class="radar-lbl">RADAR</span>
+            <div class="radar-track" id="hud-radar">
+              <div class="radar-dome" title="Ares-1 Dome"></div>
+              <div class="radar-shelter" title="Armored Shelter"></div>
+              <div id="radar-stations"></div>
+              <div id="radar-enemies"></div>
+              <div class="radar-dot player" id="radar-player"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Center: HIGH-VISIBILITY PRIORITY MISSION PANEL -->
+        <div class="hud-card mission-card" id="mission-box">
+          <div class="mission-header">
+            <span class="mission-dot"></span>
+            <span id="mission-kicker">SOL PRIORITY MISSION</span>
+          </div>
+          <div class="objective" id="hud-objective">CONNECT SOLAR ARRAY (x 800) & PURIFY WATER (x 195)</div>
+          <div class="mission-steps" id="hud-mission-steps"></div>
+          <div class="thought-line" id="hud-thought">“Wires don't lie. Just breathe.”</div>
+        </div>
+
+        <!-- Right: Separate ECLSS Indicators (O2, Pressure, CO2) + Biometrics -->
+        <div class="hud-card meters-card">
+          <div class="eclss-pills">
+            <div class="eclss-pill" id="pill-o2"><span>O₂ RESERVE</span><b id="o2-val">100%</b></div>
+            <div class="eclss-pill" id="pill-pres"><span>PRESSURE</span><b id="pres-val">101 kPa</b></div>
+            <div class="eclss-pill" id="pill-co2"><span>AIR CO₂</span><b id="co2-val">0.04%</b></div>
+          </div>
+          <div class="meters-grid">
+            <div class="meter" id="m-rad"><span>RAD</span><div class="bar rad"><i id="rad-bar"></i></div><b id="rad-val">0%</b></div>
+            <div class="meter" id="m-morale"><span>MORALE</span><div class="bar morale"><i id="morale-bar"></i></div><b id="morale-val">92%</b></div>
+            <div class="meter" id="m-fatigue"><span>FATIGUE</span><div class="bar fatigue"><i id="fatigue-bar"></i></div><b id="fatigue-val">0%</b></div>
+            <div class="meter" id="m-dust"><span>DUST</span><div class="bar rad"><i id="dust-bar"></i></div><b id="dust-val">0%</b></div>
+          </div>
+          <div class="suit-bar">
+            <span class="emp-tag" id="hud-emp">EMP [SPACE]: READY</span>
+            <span class="decoy-tag" id="hud-decoy">DECOY [Q]: READY</span>
+            <span class="pwr-tag" id="hud-pwr-net">GRID: +2.0 kW</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- TOP SUB-BAR: CIRCULAR SYSTEM RING GAUGES + NASA CONTROLS & STUN FEED -->
+      <div class="hud-subbar">
+        <div class="rings-dock" id="hud-systems"></div>
+
+        <div class="right-hud-col">
+          <div class="nasa-btns">
+            <button class="nasa-btn" id="btn-hud-rest" title="Sleep or Keep Working (NASA HRP)"><kbd>Z</kbd><span id="lbl-hud-rest">SLEEP / REST</span></button>
+            <button class="nasa-btn" id="btn-hud-power" title="Electrical Power Budget & Dust Storms"><kbd>B</kbd><span id="lbl-hud-power">POWER kW</span></button>
+            <button class="nasa-btn" id="btn-hud-eclss" title="ECLSS Air Quality, CO2 & Isolation"><kbd>V</kbd><span id="lbl-hud-eclss">ECLSS AIR</span></button>
+            <button class="nasa-btn" id="btn-hud-music" title="Toggle Background Music"><kbd>M</kbd><span id="lbl-hud-music">♫ ON</span></button>
+          </div>
+
+          <div class="stun-feed hidden" id="stun-feed">
+            <div class="stun-feed-top">
+              <span id="stun-feed-title">⚡ STALKER STUNNED</span>
+              <b id="stun-feed-time">5.0s</b>
+            </div>
+            <div class="stun-feed-sub" id="stun-feed-sub">Optical sensors disabled by EMP pulse</div>
+            <div class="stun-bar"><i id="stun-feed-bar" style="width:100%"></i></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hud-foot">
+      <div class="foot-left">
+        <div class="logs" id="hud-logs">LOGS 0/5</div>
+        <div class="bond-status" id="hud-bond">CREW SUPPORT (x 335): AVAILABLE</div>
+        <div class="shield-status" id="hud-shield">SUIT SHIELD: 0 · ECLSS SPARE: 1</div>
+      </div>
+      <div class="hint">A/D MOVE · SPACE EMP · Q DECOY · Z SLEEP · B POWER · V ECLSS · E OPERATE · ESC EXIT</div>
+    </div>
+
+    <div id="prompt" class="prompt hidden"><kbd>E</kbd><span id="prompt-text"></span></div>
+    <div id="toast" class="toast"></div>
+    <div id="banner" class="banner">
+      <h3 id="banner-kicker"></h3><h2 id="banner-title"></h2><p id="banner-sub"></p>
+    </div>
+  </div>
+
+  <!-- CINEMATIC SOL TRANSITION -->
+  <div id="sol-transition" class="sol-trans">
+    <div class="sol-sky-box">
+      <div class="sol-orb"></div>
+    </div>
+    <div class="sol-trans-kicker" id="st-kicker">MARTIAN ROTATION COMPLETE</div>
+    <h1 class="sol-trans-num" id="st-title">SOL 01 ➔ SOL 02</h1>
+    <div class="sol-trans-sub" id="st-sub">DAWN AT SECTOR ARES-1</div>
+    <div class="sol-trans-report" id="st-report"></div>
+  </div>
+
+  <!-- TITLE -->
+  <div id="screen-title" class="screen title">
+    <div class="kicker">MISSION ARES-7 · DOME ARES-1 · MARS</div>
+    <h1>SOL <span>ZERO</span></h1>
+    <p class="tagline">You are not the hero they expected.<br>You are the technician they need.</p>
+
+    <div class="diff-selector">
+      <div class="diff-lbl">SELECT DIFFICULTY LEVEL</div>
+      <div class="diff-btns" id="diff-btns">
+        <button class="diff-btn" data-diff="story">CADET</button>
+        <button class="diff-btn active" data-diff="normal">TECHNICIAN</button>
+        <button class="diff-btn" data-diff="hard">SURVIVAL</button>
+        <button class="diff-btn" data-diff="extreme">SOL ZERO</button>
+      </div>
+      <div class="diff-desc" id="diff-desc">Standard ARES-7 · Balanced · Active exterior stalker threat</div>
+    </div>
+
+    <div class="actions">
+      <button class="btn primary" id="btn-start">Start Mission</button>
+      <button class="btn" id="btn-dossier">Narrative Dossier</button>
+      <button class="btn ghost" id="btn-audio">Audio: ON</button>
+    </div>
+    <div class="title-foot">NASA PROTOCOLS: FATIGUE & SLEEP [Z] · POWER BUDGET [B] · ECLSS AIR & CO₂ [V]</div>
+  </div>
+
+  <!-- INTRO -->
+  <div id="screen-intro" class="screen intro hidden">
+    <div class="kicker">PROLOGUE · 2063</div>
+    <div class="intro-lines" id="intro-lines"></div>
+    <div class="intro-actions">
+      <button class="btn ghost" id="btn-skip-intro">Skip</button>
+      <button class="btn primary hidden" id="btn-intro-next">Continue →</button>
+    </div>
+  </div>
+
+  <!-- BRIEFING -->
+  <div id="screen-brief" class="screen brief hidden">
+    <div class="brief-grid">
+      <div>
+        <div class="kicker">DESCENT BRIEFING · SOL 1</div>
+        <h2>DOME <em>ARES-1</em></h2>
+        <p class="hl">The landing took a heavy toll. Engineer Tomas Rios has his right arm immobilized; Dr. Vela is treating him in the medical bay. Commander Hiraoka holds the dome under red alert.</p>
+        <p>Beyond repairing stations and evading <b>ARES-6 Stalker Drones</b>, you must manage three real NASA survival protocols:</p>
+        <div class="divider"></div>
+        <p><b style="color:#d0bfff">1. SLEEP OR FINISH A TASK [Z]:</b> Working through rest hours builds <b>Fatigue</b> (slower repairs requiring extra verification). Sleeping restores performance, but leaves broken systems offline until tomorrow.</p>
+        <p><b style="color:#e599f7">2. DUST STORMS & POWER BUDGET [B]:</b> Atmospheric and panel dust slash solar generation. Shed non-critical loads (greenhouse, lab, or Rover) to preserve battery reserves.</p>
+        <p><b style="color:#b197fc">3. OXYGEN AVAILABLE, HAZARDOUS AIR [V]:</b> Even with full O₂, a <b>CO₂ scrubber fault</b> turns a module toxic. Evacuate and isolate the sector or decide where to spend your single spare filter.</p>
+      </div>
+      <div>
+        <h4>SECTOR STATIONS & SYSTEMS</h4>
+        <div class="sys-li"><b>WATER PURIFIER (x 195)</b><span>UV laser against perchlorates</span></div>
+        <div class="sys-li"><b>BUNKS (x 235 / [Z])</b><span>circadian rest & fatigue management</span></div>
+        <div class="sys-li"><b>LIFE SUPPORT (x 275)</b><span>ECLSS console, pressure & CO₂ scrubbing</span></div>
+        <div class="sys-li"><b>CREW QUARTERS (x 335)</b><span>emotional support with Rios, Vela & Hiraoka</span></div>
+        <div class="sys-li"><b>GREENHOUSE (x 395)</b><span>nutrient synthesis (isolatable on CO₂ fault)</span></div>
+        <div class="sys-li"><b>ROVER-2 (x 600)</b><span>capacitor bank & EVA kinetic shield</span></div>
+        <div class="sys-li"><b>SOLAR ARRAY (x 800)</b><span>deposited dust cleaning & solar angle</span></div>
+        <div class="sys-li"><b>WASTE / X-BAND / REACTOR</b><span>x 1020, x 1230 & x 1680</span></div>
+        <h4 style="margin-top:.8em">QUICK CONTROLS</h4>
+        <div class="keys">
+          <kbd>A / D · SHIFT</kbd><span>move & thruster sprint</span>
+          <kbd>SPACE / Q</kbd><span>EMP pulse / deploy Decoy Beacon</span>
+          <kbd>Z / B / V</kbd><span>Sleep HRP [Z] · Power Grid [B] · ECLSS CO₂ [V]</span>
+          <kbd>E / ESC</kbd><span>operate station / exit any mechanic [ESC]</span>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="btn-brief-start">Descend · Sol 1</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DOSSIER -->
+  <div id="screen-dossier" class="screen dossier hidden">
+    <div class="dossier-body">
+      <h1>NARRATIVE & SCIENTIFIC DOSSIER</h1>
+      <div class="sub">SOL ZERO · PROTOCOL ARES-7 (BASED ON NASA STUDIES)</div>
+
+      <h3>01 — FATIGUE & ISOLATION (NASA HRP)</h3>
+      <p><span class="em">Sleep or finish a task.</span> NASA links sleep deprivation and circadian desynchronization with cognitive and motor decline. Continuing work during rest hours accumulates fatigue (slowing repairs and requiring extra verification checks), while sleeping restores performance at the cost of leaving unfixed systems offline until the next Sol.</p>
+
+      <h3>02 — DUST STORMS & ELECTRICAL POWER BUDGET</h3>
+      <p><span class="em">The real danger is darkness.</span> Suspended atmospheric dust and dust deposited on solar panels slash power generation. Cleaning the panels at `x 800` removes deposited dust, but during a storm you must shed non-essential loads (`[B]`) so life support batteries do not drain.</p>
+
+      <h3>03 — OXYGEN AVAILABLE, HAZARDOUS AIR (NASA ECLSS)</h3>
+      <p><span class="em">Beyond O₂.</span> The ECLSS system regulates oxygen, pressure (`kPa`), and carbon dioxide (`CO₂`). A failure in `CO₂` scrubbing makes a module lethal even when `O₂` tanks are full. You can isolate the module (`[V]`) or decide whether to spend your single spare filter to save the greenhouse or reserve it for the main habitat.</p>
+
+      <div class="actions">
+        <button class="btn" id="btn-dossier-back">← Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ONE-TIME MECHANIC TUTORIAL MODAL (PAUSES GAME & PROTECTS FROM STALKERS) -->
+  <div id="screen-tutorial" class="screen logview hidden">
+    <div class="log-card tut-card">
+      <div class="who" id="tut-kicker">TRAINING MODULE · GAME PAUSED (SAFE FROM STALKERS)</div>
+      <h3 id="tut-title">—</h3>
+      <div class="body" id="tut-body">—</div>
+      <div class="tut-keys-box" id="tut-keys">—</div>
+      <div class="actions">
+        <button class="btn ghost" id="btn-tut-exit">Cancel · ESC</button>
+        <button class="btn primary" id="btn-tut-start">Got It — Start Mechanic [ENTER / E]</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EMOTIONAL SUPPORT MODAL -->
+  <div id="screen-emotion" class="screen logview hidden">
+    <div class="log-card emo-card">
+      <div class="who" id="emo-who">CREW BOND · EMOTIONAL SUPPORT</div>
+      <h3 id="emo-title">—</h3>
+      <div class="body" id="emo-prompt">—</div>
+      <div class="emo-choices" id="emo-choices"></div>
+      <div class="emo-reply-box hidden" id="emo-reply"></div>
+      <div class="actions">
+        <button class="btn primary hidden" id="btn-emo-close">Return to Dome · E / ESC</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- NASA MODAL 1: SLEEP OR FINISH A TASK (HRP FATIGUE) -->
+  <div id="screen-rest" class="screen logview hidden">
+    <div class="log-card nasa-card">
+      <div class="who">NASA HRP · SLEEP, FATIGUE & PERFORMANCE MANAGEMENT</div>
+      <h3>SLEEP OR CONTINUE WORKING</h3>
+      <div class="body" id="rest-status-body">—</div>
+      <div class="emo-choices" id="rest-choices"></div>
+      <div class="actions">
+        <button class="btn" id="btn-rest-close">Close · ESC</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- NASA MODAL 2: DUST STORMS & ELECTRICAL POWER BUDGET -->
+  <div id="screen-power" class="screen logview hidden">
+    <div class="log-card nasa-card">
+      <div class="who">NASA POWER GRID · ELECTRICAL BUDGET & DUST OPACITY</div>
+      <h3>DOME ELECTRICAL LOAD PRIORITY</h3>
+      <div class="body" id="power-desc">During a dust storm solar generation drops and the base drains its batteries. Cleaning the panels (x 800) removes deposited dust, but not suspended atmospheric dust. Disconnect systems by priority to save energy:</div>
+      <div class="power-summary" id="power-summary"></div>
+      <div class="load-list" id="power-loads-list"></div>
+      <div class="actions">
+        <button class="btn primary" id="btn-power-close">Confirm Priorities · B / ESC</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- NASA MODAL 3: OXYGEN AVAILABLE, HAZARDOUS AIR (ECLSS) -->
+  <div id="screen-eclss" class="screen logview hidden">
+    <div class="log-card nasa-card">
+      <div class="who">NASA ECLSS · ENVIRONMENTAL CONTROL, PRESSURE & CO₂ SCRUBBING</div>
+      <h3>AIR QUALITY & MODULE ISOLATION</h3>
+      <div class="body" id="eclss-status-body">—</div>
+      <div class="emo-choices" id="eclss-choices"></div>
+      <div class="actions">
+        <button class="btn" id="btn-eclss-close">Close · V / ESC</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOG VIEWER -->
+  <div id="screen-log" class="screen logview hidden">
+    <div class="log-card">
+      <div class="who" id="log-who">CREW LOG</div>
+      <h3 id="log-title">—</h3>
+      <div class="body" id="log-body">—</div>
+      <div class="actions"><button class="btn" id="btn-log-close">Close · E / ESC</button></div>
+    </div>
+  </div>
+
+  <!-- PAUSE -->
+  <div id="screen-pause" class="screen hidden">
+    <div class="pause-card">
+      <h1>PAUSED</h1>
+      <p>THE CLOCK STOPS. OXYGEN DOES NOT.</p>
+      <button class="btn primary" id="btn-resume">Resume</button>
+    </div>
+  </div>
+
+  <!-- END -->
+  <div id="screen-end" class="screen end hidden">
+    <div class="end-kicker" id="end-kicker">END OF TRANSMISSION</div>
+    <h1 id="end-title">—</h1>
+    <div class="end-body" id="end-body">—</div>
+    <div class="stats" id="end-stats"></div>
+    <div class="actions">
+      <button class="btn primary" id="btn-restart">Restart Mission</button>
+    </div>
+  </div>
+
+  <div class="fx"></div>
+</div>
+
+<script src="js/audio.js"></script>
+<script src="js/data.js"></script>
+<script src="js/world.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>

@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOL ZERO — Ares-7</title>
+<style>
+  :root{
+    --bg:#0a0605;
+    --panel:rgba(28,14,9,0.92);
+    --panel-2:rgba(42,21,12,0.94);
+    --panel-border:rgba(234,152,92,0.30);
+    --ink:#f8ecdc;
+    --dim:#bda088;
+    --accent:#e8622a;
+    --accent-soft:rgba(232,98,42,0.20);
+    --amber:#ff9f45;
+    --ember:#ffd08a;
+    --sand:#f2d6b3;
+    --rust:#b0592f;
+    --water:#8fb4b0;
+    --good:#a6c47c;
+    --bad:#ff5a36;
+    --line:rgba(234,152,92,0.20);
+    --mono:"Cascadia Mono","Consolas",ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:#050302;color:var(--ink);font-family:var(--mono);
+    display:grid;place-items:center;overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  #stage{
+    position:relative;width:min(100vw,calc(100vh * 16 / 9));aspect-ratio:16/9;
+    overflow:hidden;background:#0a0605;
+    box-shadow:0 0 130px rgba(70,22,6,.55), 0 0 30px rgba(0,0,0,.9);
+    user-select:none;
+  }
+  canvas{display:block;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges}
+  .hidden{display:none!important}
+
+  /* ---------- ATMOSPHERE ---------- */
+  .fx{
+    position:absolute;inset:0;pointer-events:none;z-index:16;
+    background:
+      repeating-linear-gradient(0deg, rgba(0,0,0,.055) 0px, rgba(0,0,0,.055) 1px, transparent 1px, transparent 3px),
+      radial-gradient(ellipse at 50% 46%, transparent 64%, rgba(8,3,1,.56) 100%);
+    transition:box-shadow .5s ease;
+  }
+  #stage.panic .fx{box-shadow:inset 0 0 80px rgba(232,98,42,.45)}
+  #stage.co2-warn .fx{box-shadow:inset 0 0 90px rgba(255,159,69,.38)}
+  #stage.storm .fx{box-shadow:inset 0 0 130px rgba(120,52,22,.50)}
+
+  /* ---------- HUD ---------- */
+  #hud{
+    position:absolute;inset:0;z-index:10;pointer-events:none;padding:0.85% 1.2% 0.65%;
+    display:flex;flex-direction:column;justify-content:space-between;
+    font-size:clamp(10.5px, 1.06vw, 15px);
+  }
+  .hud-upper{display:flex;flex-direction:column;gap:.45em}
+  .hud-top{display:grid;grid-template-columns:15.6em 1fr 23.2em;align-items:start;gap:.6em}
+  .hud-top.solo{grid-template-columns:15.6em 1fr}
+  .hud-card{
+    position:relative;
+    background:linear-gradient(180deg, rgba(42,21,12,.93), rgba(19,10,6,.92));
+    border:1px solid var(--panel-border);
+    border-radius:5px;
+    padding:.5em .72em;
+    backdrop-filter:blur(6px);
+    box-shadow:0 5px 20px rgba(4,2,1,.7), inset 0 1px 0 rgba(255,196,140,.07);
+  }
+
+  /* Left: sol / clock / weather / threat */
+  .sol-card{display:flex;flex-direction:column;gap:.24em}
+  .sol-head{display:flex;align-items:center;justify-content:space-between;gap:.35em}
+  .sol-title-wrap{display:flex;align-items:baseline;gap:.35em}
+  .sol-title-wrap .lbl{color:var(--dim);font-size:.74em;letter-spacing:.14em;font-weight:700}
+  .sol-title-wrap b{font-size:1.34em;color:var(--ink);line-height:1}
+  .sol-title-wrap .sub{color:var(--amber);font-size:.72em;font-weight:800;letter-spacing:.06em;max-width:9em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .clock{color:#fff;font-size:.9em;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.04em}
+  .clock.rest-mode{color:var(--ember);text-shadow:0 0 8px rgba(255,159,69,.7)}
+  .sol-subrow{display:flex;align-items:center;justify-content:space-between;gap:.35em;font-size:.7em}
+  .diff-badge{
+    padding:.1em .45em;border-radius:3px;
+    background:rgba(232,98,42,.20);color:var(--amber);font-weight:800;letter-spacing:.07em;
+    border:1px solid rgba(255,159,69,.4);
+  }
+  .weather{color:var(--dim);letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+  .weather.danger{color:var(--amber);font-weight:800}
+  .region-line{
+    font-size:.68em;color:#c79a74;letter-spacing:.10em;font-weight:700;
+    display:flex;align-items:center;gap:.4em;
+  }
+  .region-line:before{content:"";width:.5em;height:.5em;border:1px solid var(--rust);border-radius:50%;display:inline-block}
+  .threat-pill{
+    font-size:.68em;letter-spacing:.04em;padding:.16em .45em;border-radius:3px;
+    background:rgba(255,255,255,.035);color:#e4cfb9;text-align:left;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    border:1px solid rgba(234,152,92,.18);
+  }
+  .threat-pill.warn{background:rgba(255,159,69,.16);color:var(--ember);font-weight:700;border-color:rgba(255,159,69,.5)}
+  .threat-pill.alert{background:rgba(232,98,42,.34);color:#fff0dd;font-weight:800;border-color:var(--amber);animation:pulse .8s infinite}
+  .threat-pill.stun{background:rgba(143,180,176,.16);color:#cfe4df;font-weight:700;border-color:var(--water)}
+
+  /* Center mission */
+  .mission-card{
+    display:flex;flex-direction:column;align-items:center;text-align:center;gap:.22em;
+    padding:.5em .95em;
+    background:linear-gradient(180deg, rgba(72,30,12,.94), rgba(22,11,6,.92));
+    border:1px solid rgba(255,159,69,.55);
+    border-top:3px solid var(--accent);
+    box-shadow:0 0 30px rgba(232,98,42,.20), inset 0 1px 0 rgba(255,200,150,.10);
+    transition:all .3s ease;
+  }
+  .mission-card.done{
+    background:linear-gradient(180deg, rgba(44,32,18,.92), rgba(18,12,7,.9));
+    border-color:rgba(166,196,124,.5);
+    border-top-color:var(--good);
+    box-shadow:0 0 22px rgba(166,196,124,.16);
+  }
+  .mission-header{display:flex;align-items:center;gap:.46em;font-size:.68em;letter-spacing:.20em;font-weight:800;color:var(--amber)}
+  .mission-card.done .mission-header{color:var(--good)}
+  .mission-dot{width:7px;height:7px;border-radius:50%;background:var(--amber);box-shadow:0 0 10px var(--accent);animation:pulse 1.1s infinite}
+  .mission-card.done .mission-dot{background:var(--good);box-shadow:none;animation:none}
+  .objective{color:#fff;letter-spacing:.04em;font-size:.92em;font-weight:800;line-height:1.3}
+  .mission-card.done .objective{color:var(--good)}
+  .mission-steps{display:flex;gap:.42em;flex-wrap:wrap;justify-content:center}
+  .m-chip{
+    display:inline-flex;align-items:center;gap:.3em;
+    padding:.12em .58em;border-radius:3px;font-size:.68em;font-weight:800;letter-spacing:.04em;
+    background:rgba(232,98,42,.18);border:1px solid rgba(255,159,69,.5);color:#ffe3c4;
+  }
+  .m-chip.ok{background:rgba(166,196,124,.12);border-color:rgba(166,196,124,.6);color:var(--good)}
+
+  /* Right: PROMINENT LIFE SUPPORT */
+  .meters-card{
+    display:flex;flex-direction:column;gap:.26em;
+    border:1px solid rgba(255,159,69,.46);
+    box-shadow:0 0 26px rgba(232,98,42,.16), inset 0 0 34px rgba(255,159,69,.045), 0 6px 22px rgba(0,0,0,.7);
+    background:linear-gradient(180deg, rgba(52,24,11,.96), rgba(22,11,6,.94));
+  }
+  .meters-head{
+    display:flex;align-items:center;gap:.4em;
+    font-size:.66em;letter-spacing:.13em;font-weight:800;color:var(--sand);
+    padding-bottom:.22em;border-bottom:1px solid rgba(255,159,69,.22);
+  }
+  .live-dot{width:6px;height:6px;border-radius:50%;background:var(--amber);box-shadow:0 0 9px var(--amber);animation:pulse 1.6s infinite}
+  .meters-head b{margin-left:auto;color:var(--amber);font-size:.94em;letter-spacing:.1em}
+  .eclss-pills{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:.32em;padding-top:.05em;
+  }
+  .eclss-pill{
+    display:flex;flex-direction:column;align-items:center;gap:.06em;
+    padding:.24em .22em;background:rgba(255,190,140,.045);
+    border:1px solid rgba(255,159,69,.28);border-radius:4px;
+  }
+  .eclss-pill span{color:var(--dim);letter-spacing:.05em;font-size:.66em;font-weight:800;white-space:nowrap}
+  .eclss-pill b{color:var(--sand);font-size:1.14em;font-variant-numeric:tabular-nums;font-weight:800}
+  .eclss-pill.warn{border-color:var(--amber);background:rgba(255,159,69,.17)}
+  .eclss-pill.warn b{color:var(--ember)}
+  .eclss-pill.crit{border-color:var(--bad);background:rgba(255,90,54,.20);animation:pulse .9s infinite}
+  .eclss-pill.crit b{color:#ffe3d2}
+  .meters-grid{display:grid;grid-template-columns:1fr 1fr;gap:.22em .55em;padding-top:.1em}
+  .meter{display:grid;grid-template-columns:3.7em 1fr 2.5em;align-items:center;gap:.3em;font-size:.68em}
+  .meter>span{color:var(--dim);letter-spacing:.04em;font-weight:700}
+  .meter>b{text-align:right;font-weight:800;font-variant-numeric:tabular-nums;color:var(--ink)}
+  .bar{height:5px;background:rgba(255,255,255,.10);overflow:hidden;border-radius:3px}
+  .bar i{display:block;height:100%;width:100%;background:var(--sand);transition:width .2s linear,background .3s}
+  .bar.rad i{background:var(--amber)}
+  .bar.morale i{background:linear-gradient(90deg,#b0592f,#ffd08a)}
+  .bar.fatigue i{background:#c9a07a}
+  .bar.dust i{background:#a98b6c}
+  .meter.low b,.meter.low>span{color:var(--bad)}
+  .meter.low .bar i{background:var(--accent);animation:pulse 1s infinite}
+  .meal-strip{
+    display:flex;justify-content:space-between;align-items:center;gap:.4em;
+    padding:.22em .42em;border-radius:3px;font-size:.66em;letter-spacing:.04em;
+    background:rgba(255,255,255,.035);border:1px solid rgba(234,152,92,.16);
+  }
+  .meal-strip b{color:var(--ember);font-weight:800}
+  .meal-strip.warn{border-color:rgba(255,90,54,.55);background:rgba(255,90,54,.12)}
+  .meal-strip.warn b{color:#ffb08f}
+  .suit-bar{
+    display:flex;justify-content:space-between;align-items:center;gap:.3em;flex-wrap:wrap;
+    padding-top:.22em;border-top:1px solid rgba(255,159,69,.20);
+    font-size:.64em;letter-spacing:.03em;
+  }
+  .emp-tag{color:#ffd9b8;font-weight:800}
+  .emp-tag.cd{color:var(--dim);font-weight:500}
+  .decoy-tag{color:var(--ember);font-weight:700}
+  .decoy-tag.cd{color:var(--dim);font-weight:500}
+  .pwr-tag{color:#cfe4df;font-weight:800}
+  .pwr-tag.neg{color:var(--bad);animation:pulse 1s infinite}
+
+  /* Rings */
+  .hud-subbar{display:flex;align-items:flex-start;justify-content:space-between;gap:.6em;transition:opacity .25s}
+  #hud.mini .hud-subbar{opacity:0;pointer-events:none}
+  .rings-dock{
+    display:flex;align-items:center;gap:.7em;
+    background:rgba(20,10,6,.93);
+    border:1px solid rgba(255,159,69,.30);border-radius:7px;
+    padding:.4em .8em;box-shadow:0 6px 24px rgba(0,0,0,.7);
+    pointer-events:auto;
+  }
+  .ring-main-wrap{display:flex;flex-direction:column;align-items:center;gap:.18em;padding-right:.6em;border-right:1px solid rgba(255,159,69,.22)}
+  .rings-grid{display:flex;align-items:center;gap:.55em}
+  .ring-item{display:flex;flex-direction:column;align-items:center;gap:.16em;position:relative}
+  .ring-circle{
+    position:relative;width:3.2em;height:3.2em;border-radius:50%;
+    background:conic-gradient(var(--ring-fill,#ff9f45) calc(var(--pct,50) * 1%), var(--ring-track,rgba(255,159,69,.18)) 0);
+    display:grid;place-items:center;box-shadow:0 2px 10px rgba(0,0,0,.55);
+    transition:transform .2s, box-shadow .2s;
+  }
+  .ring-main-wrap .ring-circle{width:4.2em;height:4.2em}
+  .ring-circle::after{content:"";position:absolute;inset:22%;border-radius:50%;background:#180c07;box-shadow:inset 0 1px 5px rgba(0,0,0,.8)}
+  .ring-val{position:relative;z-index:2;font-size:.84em;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .ring-main-wrap .ring-val{font-size:1.1em}
+  .ring-lbl{font-size:.58em;font-weight:800;letter-spacing:.07em;color:#d9c4ad;white-space:nowrap}
+  .ring-item.req .ring-circle{box-shadow:0 0 14px var(--amber);transform:scale(1.06)}
+  .ring-item.req .ring-lbl{color:var(--amber)}
+  .ring-item.crit .ring-circle{--ring-fill:#ff5a36 !important;box-shadow:0 0 16px rgba(255,90,54,.8);animation:pulse .85s infinite}
+  .ring-item.crit .ring-val,.ring-item.crit .ring-lbl{color:#ffb08f}
+  .ring-item.offline .ring-circle{opacity:.4}
+
+  .stun-feed{
+    display:flex;flex-direction:column;gap:.2em;min-width:17em;padding:.44em .75em;
+    background:linear-gradient(90deg, rgba(58,26,12,.96), rgba(20,10,6,.96));
+    border:1px solid rgba(255,159,69,.5);border-left:4px solid var(--amber);
+    border-radius:5px;box-shadow:0 6px 22px rgba(0,0,0,.7);
+    pointer-events:none;transition:opacity .25s, transform .25s;
+  }
+  .stun-feed.hidden{display:none!important}
+  .stun-feed-top{display:flex;justify-content:space-between;align-items:center;gap:.6em;font-size:.72em;font-weight:800;color:var(--amber);letter-spacing:.07em}
+  .stun-feed-top b{color:#fff;font-variant-numeric:tabular-nums}
+  .stun-feed-sub{font-size:.62em;color:#e4cfb9;letter-spacing:.04em}
+  .stun-bar{height:4px;background:rgba(255,255,255,.12);border-radius:3px;overflow:hidden}
+  .stun-bar i{display:block;height:100%;background:var(--amber);transition:width .1s linear}
+
+  .hud-foot{
+    display:flex;justify-content:space-between;align-items:center;gap:1em;
+    color:var(--dim);font-size:.64em;letter-spacing:.05em;
+    padding:.24em .68em;background:rgba(16,8,5,.82);
+    border-radius:4px;border:1px solid rgba(234,152,92,.15);
+  }
+  .foot-left{display:flex;gap:.95em;align-items:center;flex-wrap:wrap}
+  .logs{color:#e4cfb9;font-weight:700}
+  .bond-status{color:var(--ember);font-weight:700}
+  .shield-status{color:#cfe4df;font-weight:800}
+  .hint{opacity:.9;color:#c9b49c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  .prompt{
+    position:absolute;left:50%;bottom:8.5%;transform:translateX(-50%);
+    display:flex;align-items:center;gap:.6em;padding:.42em 1em;
+    background:rgba(24,12,7,.97);border:1.5px solid var(--amber);border-radius:4px;
+    letter-spacing:.08em;font-size:.84em;font-weight:700;box-shadow:0 6px 24px rgba(0,0,0,.75);
+    animation:rise .2s ease both;z-index:14;
+  }
+  .prompt kbd{font-family:var(--mono);background:var(--accent);color:#1a0a04;font-weight:900;padding:.1em .48em;border-radius:3px;font-size:.9em;letter-spacing:0}
+  .toast{
+    position:absolute;left:50%;top:29%;transform:translateX(-50%) translateY(-6px);
+    max-width:64%;text-align:center;padding:.5em 1.1em;background:rgba(22,11,6,.97);
+    border:1px solid rgba(234,152,92,.28);border-left:4px solid var(--accent);border-radius:4px;
+    font-size:.82em;line-height:1.42;letter-spacing:.02em;box-shadow:0 8px 26px rgba(0,0,0,.75);
+    opacity:0;transition:opacity .28s,transform .28s;pointer-events:none;z-index:18;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.bad{border-left-color:var(--bad)}
+  .toast.good{border-left-color:var(--good)}
+  .toast.emo{border-left-color:var(--sand)}
+  .banner{
+    position:absolute;left:0;right:0;top:35%;text-align:center;opacity:0;transition:opacity .5s;
+    pointer-events:none;padding:1em 0;z-index:13;
+    background:linear-gradient(90deg, transparent, rgba(24,11,6,.93) 26%, rgba(24,11,6,.93) 74%, transparent);
+  }
+  .banner.show{opacity:1}
+  .banner h3{margin:0 0 .3em;font-size:.86em;letter-spacing:.42em;color:var(--amber);font-weight:800}
+  .banner h2{margin:0;font-size:2.6em;letter-spacing:.14em;font-weight:800;line-height:1;color:#fff;text-shadow:0 0 30px rgba(232,98,42,.6)}
+  .banner p{margin:.5em 0 0;color:var(--sand);letter-spacing:.1em;font-size:.92em;font-weight:700}
+
+  /* ---------- SOL TRANSITION ---------- */
+  .sol-trans{
+    position:absolute;inset:0;z-index:12;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:radial-gradient(circle at 50% 70%, #58240f 0%, #230e05 62%, #080302 100%);
+    opacity:0;pointer-events:none;transition:opacity .55s ease;
+  }
+  .sol-trans.active{opacity:1;pointer-events:auto}
+  .sol-sky-box{position:relative;width:340px;height:124px;margin-bottom:1.1em;border-bottom:2px solid var(--amber);overflow:hidden}
+  .sol-orb{
+    position:absolute;left:50%;bottom:-24px;width:46px;height:46px;margin-left:-23px;border-radius:50%;
+    background:radial-gradient(circle, #fff7e8 16%, #ff9f45 52%, rgba(232,98,42,0) 78%);
+    box-shadow:0 0 46px #e8622a;
+  }
+  .sol-trans.active .sol-orb{animation:sunRiseArc 3.2s cubic-bezier(.22,.68,.35,1) forwards}
+  @keyframes sunRiseArc{
+    0%{transform:translate(-110px,28px) scale(.8);opacity:.2}
+    45%{transform:translate(0,-58px) scale(1.08);opacity:1}
+    100%{transform:translate(95px,-36px) scale(1);opacity:.95}
+  }
+  .sol-trans-kicker{color:var(--amber);letter-spacing:.38em;font-size:.84em;font-weight:800;margin-bottom:.35em}
+  .sol-trans-num{font-size:clamp(34px,5vw,70px);font-weight:800;letter-spacing:.13em;color:#fff;text-shadow:0 0 34px rgba(232,98,42,.6);margin:0}
+  .sol-trans-sub{color:var(--sand);letter-spacing:.2em;font-size:.96em;margin:.4em 0 1.2em;font-weight:700}
+  .sol-trans-report{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:.8em;max-width:680px;width:92%;
+    background:rgba(30,15,8,.92);border:1px solid var(--line);padding:.9em 1.2em;border-radius:6px;
+    font-size:.82em;text-align:center;
+  }
+  .sol-trans-report div span{display:block;color:var(--dim);font-size:.86em;margin-bottom:.22em}
+  .sol-trans-report div b{color:var(--ink);font-size:1.2em}
+
+  /* ---------- SCREENS ---------- */
+  .screen{
+    position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;padding:3% 5%;
+    background:linear-gradient(180deg,rgba(10,5,3,.90),rgba(6,3,2,.97));
+    overflow-y:auto;
+  }
+  .screen.title{background:linear-gradient(180deg,rgba(10,5,3,.30),rgba(8,4,2,.88))}
+  .kicker{color:var(--amber);letter-spacing:.36em;font-size:clamp(10px,1.02vw,14.5px);margin-bottom:1em;font-weight:800}
+  .title h1{margin:0;font-size:clamp(46px,8.4vw,128px);line-height:.9;letter-spacing:.06em;font-weight:800;text-shadow:0 0 60px rgba(232,98,42,.5)}
+  .title h1 span{color:var(--amber)}
+  .tagline{margin:1em 0 0;color:#e7d5c1;letter-spacing:.13em;font-size:clamp(12px,1.15vw,17px);line-height:1.65}
+  .diff-selector{
+    margin-top:1.2em;display:flex;flex-direction:column;align-items:center;gap:.45em;
+    background:rgba(30,15,8,.88);border:1px solid var(--panel-border);padding:.7em 1.3em;border-radius:6px;
+  }
+  .diff-selector .diff-lbl{font-size:.78em;letter-spacing:.24em;color:var(--dim);font-weight:800}
+  .diff-btns{display:flex;gap:.5em;flex-wrap:wrap;justify-content:center}
+  .diff-btn{
+    font-family:var(--mono);font-size:clamp(10px,.94vw,13px);letter-spacing:.14em;
+    padding:.5em 1.05em;background:rgba(255,255,255,.035);color:var(--dim);
+    border:1px solid var(--line);border-radius:4px;cursor:pointer;transition:all .18s;
+  }
+  .diff-btn:hover{border-color:var(--amber);color:var(--ink)}
+  .diff-btn.active{background:var(--accent-soft);border-color:var(--amber);color:#fff;font-weight:800}
+  .diff-desc{font-size:.8em;color:#d6c3ae;letter-spacing:.05em}
+  .actions{display:flex;gap:.75em;flex-wrap:wrap;justify-content:center;margin-top:1.2em}
+  .btn{
+    font-family:var(--mono);font-size:clamp(11px,1vw,14px);letter-spacing:.14em;
+    padding:.7em 1.35em;background:rgba(255,255,255,.045);color:var(--ink);
+    border:1px solid var(--line);border-radius:4px;cursor:pointer;transition:all .18s;
+    text-transform:uppercase;font-weight:700;
+  }
+  .btn:hover{border-color:var(--amber);color:var(--amber);background:var(--accent-soft)}
+  .btn.primary{background:linear-gradient(180deg,#ff8a4a,#c94d1e);border-color:#ffb066;color:#1a0a04;font-weight:900;box-shadow:0 0 20px rgba(232,98,42,.35)}
+  .btn.primary:hover{filter:brightness(1.12);color:#1a0a04}
+  .btn.ghost{color:var(--dim)}
+  .title-foot{position:absolute;bottom:2%;left:0;right:0;color:var(--dim);font-size:clamp(9px,.84vw,12px);letter-spacing:.14em}
+
+  /* intro / brief / dossier */
+  .intro{background:linear-gradient(180deg,#0a0503,#060302);align-items:flex-start;justify-content:center;padding:6% 12%}
+  .intro-lines{max-width:780px;width:100%;text-align:left;font-size:clamp(13px,1.3vw,19px);line-height:1.92;color:#e2d0bb}
+  .intro-lines .ln{opacity:0;transform:translateY(8px);transition:opacity .75s ease,transform .75s ease;margin:.32em 0}
+  .intro-lines .ln.on{opacity:1;transform:none}
+  .intro-lines .ln.hl{color:var(--amber);font-weight:700}
+  .intro-lines .ln.small{color:var(--dim);font-size:.86em;letter-spacing:.07em}
+  .intro-actions{margin-top:2em;display:flex;gap:.8em;align-items:center}
+  .intro .kicker{position:absolute;top:6%;left:12%;margin:0}
+
+  .brief{background:linear-gradient(180deg,rgba(14,8,5,.95),rgba(6,3,2,.99))}
+  .brief-grid{display:grid;grid-template-columns:1.12fr 1fr;gap:2em;text-align:left;max-width:1060px;width:100%;align-items:start}
+  .brief h2,.dossier h2,.end h2{letter-spacing:.18em;font-size:clamp(17px,1.7vw,25px);margin:0 0 .5em;font-weight:800}
+  .brief h2 em,.end h2 em{color:var(--amber);font-style:normal}
+  .brief p{color:#d6c3ae;line-height:1.6;font-size:clamp(10.5px,.94vw,13.6px);margin:.42em 0}
+  .brief p.hl{color:var(--ink)}
+  .brief .divider{height:1px;background:var(--line);margin:.7em 0}
+  .brief h4{letter-spacing:.18em;color:var(--amber);font-size:.8em;margin:0 0 .4em;font-weight:800}
+  .brief .sys-li{display:flex;gap:.6em;align-items:baseline;padding:.22em 0;border-bottom:1px dashed rgba(234,152,92,.14);color:#e2d0bb;font-size:clamp(10px,.88vw,12.6px)}
+  .brief .sys-li b{color:var(--sand);letter-spacing:.04em;font-weight:800;min-width:11.5em}
+  .brief .sys-li span{color:var(--dim)}
+  .keys{display:grid;grid-template-columns:auto 1fr;gap:.28em .9em;margin:.4em 0 .9em;font-size:clamp(10px,.86vw,12.4px);color:#d6c3ae}
+  .keys kbd{font-family:var(--mono);color:var(--amber);border:1px solid rgba(255,159,69,.4);padding:.06em .42em;text-align:center;border-radius:3px}
+  .brief .actions{justify-content:flex-start;margin-top:0}
+
+  .dossier{justify-content:flex-start;align-items:stretch;text-align:left;padding:4.5% 8%}
+  .dossier-body{max-width:900px;margin:0 auto;width:100%;font-size:clamp(11.5px,1.02vw,14.5px);line-height:1.7;color:#d6c3ae}
+  .dossier h1{font-size:clamp(23px,2.4vw,34px);letter-spacing:.13em;margin:0 0 .2em;color:var(--ink)}
+  .dossier .sub{color:var(--amber);letter-spacing:.26em;font-size:.82em;margin-bottom:1.5em;font-weight:800}
+  .dossier h3{letter-spacing:.2em;color:var(--sand);font-size:.88em;margin:1.5em 0 .55em;font-weight:800;padding-top:.8em;border-top:1px solid var(--line)}
+  .dossier p{margin:.45em 0}
+  .dossier .em{color:var(--ink);font-weight:700}
+  .dossier .actions{margin-top:1.4em;justify-content:flex-start}
+  .region-grid{
+    display:grid;grid-template-columns:repeat(5,1fr);gap:.28em .7em;
+    font-size:.76em;letter-spacing:.06em;color:#c9a883;
+  }
+  .region-grid span{padding:.16em 0;border-bottom:1px dotted rgba(234,152,92,.16)}
+
+  /* Cards/modals */
+  .screen.logview{background:rgba(8,4,2,.82);backdrop-filter:blur(6px)}
+  .log-card{
+    max-width:740px;width:100%;text-align:left;padding:1.5em 1.9em;
+    background:linear-gradient(180deg,rgba(38,19,11,.98),rgba(20,10,6,.98));
+    border:1px solid var(--line);border-radius:7px;position:relative;
+    box-shadow:0 18px 54px rgba(0,0,0,.85);
+  }
+  .log-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent)}
+  .log-card.emo-card:before{background:var(--ember)}
+  .log-card.nasa-card:before{background:var(--amber)}
+  .log-card .who{color:var(--amber);letter-spacing:.18em;font-size:.76em;margin-bottom:.35em;font-weight:800}
+  .log-card h3{margin:0 0 .6em;letter-spacing:.06em;font-size:clamp(16px,1.4vw,21px);color:#fff}
+  .log-card .body{width:100%;white-space:pre-wrap;color:#e2d0bb;line-height:1.65;font-family:var(--mono);font-size:clamp(11px,.96vw,13.8px);border:0;background:none;padding:0}
+  .log-card .actions{justify-content:flex-end;margin-top:1.1em}
+  .emo-choices{display:flex;flex-direction:column;gap:.5em;margin-top:1em}
+  .emo-choice-btn{
+    display:flex;flex-direction:column;gap:.24em;text-align:left;font-family:var(--mono);
+    font-size:clamp(10.5px,.94vw,13.2px);line-height:1.42;padding:.65em .95em;
+    background:rgba(255,159,69,.06);color:var(--ink);
+    border:1px solid rgba(234,152,92,.30);border-radius:4px;cursor:pointer;transition:all .18s;
+  }
+  .emo-choice-btn:hover{background:rgba(232,98,42,.18);border-color:var(--amber);transform:translateX(3px)}
+  .emo-choice-btn b{color:var(--amber);font-size:1.02em}
+  .emo-choice-btn small{color:var(--dim);font-size:.88em}
+  .emo-reply-box{margin-top:.9em;padding:.8em 1em;background:rgba(255,159,69,.10);border-left:4px solid var(--amber);color:#ffe3c4;font-size:clamp(11px,.96vw,13.6px);line-height:1.6}
+
+  /* tutorial drawer (side panel, does not cover the stage) */
+  .tut-drawer{
+    position:absolute;right:1.6%;top:11.5%;width:min(370px,37vw);z-index:40;
+    display:flex;flex-direction:column;gap:.5em;padding:.85em .95em;
+    background:linear-gradient(180deg,rgba(56,26,13,.99),rgba(22,11,6,.99));
+    border:1px solid rgba(255,159,69,.65);border-left:4px solid var(--amber);
+    border-radius:6px;box-shadow:0 16px 50px rgba(0,0,0,.85), 0 0 28px rgba(232,98,42,.18);
+    animation:slideIn .28s ease both;
+  }
+  @keyframes slideIn{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
+  .tut-top{display:grid;grid-template-columns:104px 1fr;gap:.7em}
+  .tut-npc{display:flex;flex-direction:column;gap:.25em}
+  #tut-portrait{
+    width:100%;height:auto;aspect-ratio:108/126;border-radius:4px;
+    border:1px solid rgba(255,159,69,.45);background:#150b06;
+    image-rendering:pixelated;
+  }
+  .tut-safe{
+    font-size:.52em;letter-spacing:.05em;text-align:center;color:#cfe4df;
+    background:rgba(143,180,176,.12);border:1px solid rgba(143,180,176,.4);
+    padding:.2em .3em;border-radius:3px;font-weight:800;
+  }
+  .tut-kicker{color:var(--amber);letter-spacing:.16em;font-size:.58em;font-weight:800;margin-bottom:.15em}
+  .tut-copy h3{margin:0 0 .15em;font-size:1.05em;letter-spacing:.06em;color:#fff;line-height:1.15}
+  .tut-npc-name{color:var(--sand);font-size:.58em;letter-spacing:.07em;font-weight:800;margin-bottom:.4em}
+  .tut-copy p{margin:0;color:#e7d5c1;font-size:.68em;line-height:1.45}
+  #tut-demo{
+    width:100%;height:auto;aspect-ratio:288/142;border:1px solid rgba(255,159,69,.35);
+    border-radius:4px;background:#100804;image-rendering:pixelated;
+  }
+  #tut-steps{margin:.1em 0 0;padding-left:1.15em;color:#e2d0bb;font-size:.66em;line-height:1.45}
+  #tut-steps li{margin:.14em 0}
+  #tut-steps li::marker{color:var(--amber);font-weight:800}
+  .tut-keys{
+    font-size:.6em;color:var(--amber);letter-spacing:.04em;font-weight:800;
+    background:rgba(255,159,69,.09);border:1px solid rgba(255,159,69,.26);
+    border-radius:3px;padding:.4em .55em;
+  }
+  .tut-actions{display:flex;gap:.5em}
+  .tut-actions .btn{flex:1;padding:.55em .4em;font-size:.68em}
+
+  /* meal / garden / lab */
+  .panel-card{
+    width:min(820px,94%);text-align:left;padding:1.4em 1.7em;
+    background:linear-gradient(180deg,rgba(40,20,11,.98),rgba(20,10,6,.98));
+    border:1px solid var(--panel-border);border-radius:7px;
+    box-shadow:0 18px 54px rgba(0,0,0,.85);position:relative;
+  }
+  .panel-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent);border-radius:4px 0 0 4px}
+  .panel-card h3{margin:0 0 .4em;font-size:clamp(16px,1.45vw,22px);letter-spacing:.06em;color:#fff}
+  .panel-card .who{color:var(--amber);letter-spacing:.18em;font-size:.74em;margin-bottom:.3em;font-weight:800}
+  .panel-desc{color:#d6c3ae;font-size:.82em;line-height:1.55;margin:.2em 0 .8em}
+  .panel-foot{display:flex;justify-content:space-between;gap:.8em;flex-wrap:wrap;font-size:.76em;color:var(--dim);border-top:1px solid var(--line);padding-top:.55em;margin-top:.7em}
+  .panel-foot b{color:var(--sand)}
+  .ration-grid{display:grid;grid-template-columns:1fr 1fr;gap:.6em}
+  .ration-card{
+    display:grid;grid-template-columns:40px 1fr auto;gap:.6em;align-items:center;
+    padding:.6em .7em;border:1px solid var(--line);border-radius:5px;background:rgba(255,255,255,.03);
+    cursor:pointer;text-align:left;color:var(--ink);font-family:var(--mono);transition:all .16s;
+  }
+  .ration-card:hover{border-color:var(--amber);background:rgba(232,98,42,.14);transform:translateY(-1px)}
+  .ration-swatch{width:40px;height:40px;border-radius:4px;border:1px solid rgba(0,0,0,.4);box-shadow:inset 0 0 10px rgba(0,0,0,.35)}
+  .ration-name{font-size:.84em;font-weight:800;letter-spacing:.03em}
+  .ration-desc{font-size:.68em;color:var(--dim);margin-top:.15em}
+  .ration-morale{font-size:.76em;color:var(--good);font-weight:800;white-space:nowrap}
+  .ration-card.repeat{border-color:rgba(255,90,54,.5)}
+  .ration-card.repeat .ration-morale{color:var(--bad)}
+  .ration-card.tired{border-color:rgba(255,159,69,.7);box-shadow:0 0 12px rgba(255,159,69,.15)}
+  .plot-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.55em}
+  .plot{
+    padding:.5em .55em;border:1px solid var(--line);border-radius:5px;
+    background:rgba(255,255,255,.03);text-align:left;min-height:5.6em;
+  }
+  .plot-top{display:flex;justify-content:space-between;gap:.25em;font-size:.62em;color:var(--dim);letter-spacing:.05em}
+  .plot b{display:block;color:var(--sand);font-size:.8em;margin:.2em 0 .1em;letter-spacing:.03em}
+  .grow-bar{height:5px;background:rgba(255,255,255,.10);border-radius:3px;overflow:hidden;margin:.35em 0 .25em}
+  .grow-bar i{display:block;height:100%;background:linear-gradient(90deg,#7a8a4a,#c9e08a);transition:width .3s}
+  .plot small{display:block;font-size:.6em;color:var(--dim);line-height:1.35}
+  .plot.ready{border-color:var(--ember);box-shadow:0 0 14px rgba(255,208,138,.18)}
+  .plot.ready small{color:var(--ember);font-weight:800}
+  .plot.fault{border-color:var(--bad);animation:pulse 1.1s infinite}
+  .plot.fault small{color:#ffb08f;font-weight:800}
+  .plot.empty{opacity:.45;border-style:dashed}
+  .crop-btns{display:flex;gap:.45em;flex-wrap:wrap;margin-top:.75em}
+  .crop-btn{
+    font-family:var(--mono);font-size:.7em;letter-spacing:.06em;padding:.45em .7em;
+    border:1px solid var(--line);border-radius:4px;background:rgba(255,255,255,.04);
+    color:var(--ink);cursor:pointer;display:flex;align-items:center;gap:.4em;transition:all .15s;
+  }
+  .crop-btn:hover{border-color:var(--amber);background:rgba(232,98,42,.14)}
+  .crop-btn i{width:.7em;height:.7em;border-radius:50%;display:inline-block}
+  .crop-btn.selected{border-color:var(--amber);box-shadow:0 0 10px rgba(255,159,69,.2)}
+  #lab-canvas{
+    width:100%;height:auto;border:1px solid var(--line);border-radius:5px;
+    background:#0d0705;image-rendering:pixelated;margin-top:.5em;
+  }
+  .lab-foot{display:flex;justify-content:space-between;gap:.8em;font-size:.7em;color:var(--dim);margin-top:.4em}
+  .lab-foot b{color:var(--water)}
+
+  /* power budget */
+  .power-summary{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:.6em;margin:.75em 0;
+    padding:.65em;background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:5px;
+    text-align:center;font-size:.86em;
+  }
+  .power-summary span{display:block;color:var(--dim);font-size:.82em;margin-bottom:.2em}
+  .power-summary b{font-size:1.2em;color:var(--ink)}
+  .load-list{display:flex;flex-direction:column;gap:.45em;margin-top:.6em}
+  .load-row{
+    display:flex;align-items:center;justify-content:space-between;gap:.8em;
+    padding:.55em .85em;background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:4px;font-size:.84em;
+  }
+  .load-row.off{opacity:.6;border-color:rgba(232,98,42,.4)}
+  .load-info b{color:var(--ink);display:block;margin-bottom:.14em}
+  .load-info span{color:var(--dim);font-size:.88em}
+  .load-toggle{
+    font-family:var(--mono);font-size:.88em;font-weight:800;padding:.42em .8em;border-radius:4px;
+    cursor:pointer;border:1px solid var(--sand);background:rgba(242,214,179,.12);color:var(--sand);min-width:10em;
+  }
+  .load-row.off .load-toggle{border-color:var(--amber);background:rgba(232,98,42,.18);color:var(--amber)}
+
+  /* end / pause */
+  .end .end-kicker{color:var(--amber);letter-spacing:.34em;font-size:.86em;margin-bottom:1em;font-weight:800}
+  .end h1{font-size:clamp(28px,4.4vw,62px);letter-spacing:.1em;margin:0 0 .5em;line-height:1}
+  .end .end-body{max-width:680px;color:#e2d0bb;line-height:1.8;font-size:clamp(12px,1.04vw,15px)}
+  .end .stats{display:flex;gap:1.8em;margin:1.6em 0 1em;color:var(--dim);font-size:.82em;letter-spacing:.12em;flex-wrap:wrap;justify-content:center}
+  .end .stats b{display:block;color:var(--ink);font-size:1.8em;font-weight:800;margin-top:.2em;letter-spacing:.03em}
+  .end .actions{margin-top:1.2em}
+  .pause-card{text-align:center}
+  .pause-card h1{letter-spacing:.4em;font-weight:700;font-size:clamp(22px,2.7vw,36px);margin:0 0 .5em}
+  .pause-card p{color:var(--dim);letter-spacing:.16em;font-size:.84em;margin:0 0 1.6em}
+
+  /* ---------- MEDLI LANDING CINEMATIC ---------- */
+  .medli{position:absolute;inset:0;z-index:50;background:#050201;overflow:hidden}
+  #medli-canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:auto}
+  .medli-hud{position:absolute;left:3.5%;top:5.5%;z-index:2;text-align:left;pointer-events:none}
+  .medli-kicker{color:var(--amber);letter-spacing:.34em;font-size:.78em;font-weight:800;margin-bottom:.2em}
+  .medli-phase{font-size:clamp(20px,2.6vw,34px);letter-spacing:.18em;color:#fff;font-weight:800;text-shadow:0 0 24px rgba(232,98,42,.7)}
+  .medli-sub{color:var(--sand);letter-spacing:.14em;font-size:.8em;margin-top:.2em;font-weight:700}
+  .medli-telemetry{
+    position:absolute;right:3.5%;top:6%;z-index:2;display:grid;grid-template-columns:auto auto;gap:.22em .9em;
+    font-size:.72em;letter-spacing:.06em;color:#e2d0bb;background:rgba(16,8,4,.62);
+    border:1px solid rgba(255,159,69,.28);border-left:3px solid var(--amber);
+    padding:.6em .8em;border-radius:4px;min-width:16em;
+  }
+  .medli-telemetry span{color:var(--dim)}
+  .medli-telemetry b{color:var(--ember);font-variant-numeric:tabular-nums;text-align:right}
+  .medli-actions{position:absolute;right:3.5%;bottom:4.5%;z-index:3;display:flex;gap:.7em}
+  .medli-actions .btn{font-size:.78em;padding:.6em 1.1em}
+  .medli-log{
+    position:absolute;left:3.5%;bottom:4.5%;z-index:2;max-width:44%;text-align:left;
+    color:#d6c3ae;font-size:.72em;line-height:1.55;letter-spacing:.03em;
+    border-left:2px solid rgba(255,159,69,.5);padding-left:.8em;
+  }
+  .medli-log b{color:var(--amber)}
+
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.34}}
+  @keyframes rise{from{opacity:0;transform:translateX(-50%) translateY(6px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+  ::-webkit-scrollbar{width:8px}
+  ::-webkit-scrollbar-track{background:#0a0605}
+  ::-webkit-scrollbar-thumb{background:#5c2a13}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="game" width="960" height="540"></canvas>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div class="hud-upper">
+      <div class="hud-top">
+        <div class="hud-card sol-card">
+          <div class="sol-head">
+            <div class="sol-title-wrap">
+              <span class="lbl">SOL</span><b id="hud-sol">01</b><span class="sub" id="hud-solname">FIRST MEAL</span>
+            </div>
+            <span class="clock" id="hud-clock">T-02:00</span>
+          </div>
+          <div class="sol-subrow">
+            <span class="diff-badge" id="hud-diff">TECHNICIAN</span>
+            <span class="weather" id="hud-weather">REMS · CLEAR</span>
+          </div>
+          <div class="region-line" id="hud-region">EXTERIOR · ACIDALIA PLANITIA</div>
+          <div class="threat-pill" id="hud-threat">SAFE ZONE · DOME SEALED</div>
+        </div>
+
+        <div class="hud-card mission-card" id="mission-box">
+          <div class="mission-header">
+            <span class="mission-dot"></span>
+            <span id="mission-kicker">ACTIVE MISSION · SOL 01</span>
+          </div>
+          <div class="objective" id="hud-objective">EAT A RATION AT THE MESS GALLEY</div>
+          <div class="mission-steps" id="hud-mission-steps"></div>
+        </div>
+
+        <div class="hud-card meters-card" id="meters-card">
+          <div class="meters-head">
+            <span class="live-dot"></span>
+            <span>LIFE SUPPORT</span>
+            <b id="meters-mode">NOMINAL</b>
+          </div>
+          <div class="eclss-pills" id="meters-air">
+            <div class="eclss-pill" id="pill-o2"><span>O₂ RESERVE</span><b id="o2-val">100%</b></div>
+            <div class="eclss-pill" id="pill-pres"><span>PRESSURE</span><b id="pres-val">101 kPa</b></div>
+            <div class="eclss-pill" id="pill-co2"><span>AIR CO₂</span><b id="co2-val">0.4%</b></div>
+          </div>
+          <div class="meters-grid">
+            <div class="meter" id="m-morale"><span>MORALE</span><div class="bar morale"><i id="morale-bar"></i></div><b id="morale-val">92%</b></div>
+            <div class="meter" id="m-rad"><span>RAD</span><div class="bar rad"><i id="rad-bar"></i></div><b id="rad-val">0%</b></div>
+            <div class="meter" id="m-fatigue"><span>FATIGUE</span><div class="bar fatigue"><i id="fatigue-bar"></i></div><b id="fatigue-val">0%</b></div>
+            <div class="meter" id="m-dust"><span>DUST</span><div class="bar dust"><i id="dust-bar"></i></div><b id="dust-val">0%</b></div>
+          </div>
+          <div class="meal-strip" id="meal-strip">
+            <span id="hud-meal">RATION · NOT EATEN</span>
+            <b id="hud-variety">VARIETY OK</b>
+          </div>
+          <div class="suit-bar" id="suit-bar">
+            <span class="emp-tag" id="hud-emp">EMP [SPACE] READY</span>
+            <span class="decoy-tag" id="hud-decoy">DECOY [Q] READY</span>
+            <span class="pwr-tag" id="hud-pwr-net">GRID +2.0 kW</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hud-subbar">
+        <div class="rings-dock" id="hud-systems"></div>
+        <div class="stun-feed hidden" id="stun-feed">
+          <div class="stun-feed-top">
+            <span id="stun-feed-title">STALKER STUNNED</span>
+            <b id="stun-feed-time">5.0s</b>
+          </div>
+          <div class="stun-feed-sub" id="stun-feed-sub">Optical sensors disabled by EMP pulse</div>
+          <div class="stun-bar"><i id="stun-feed-bar" style="width:100%"></i></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hud-foot">
+      <div class="foot-left">
+        <div class="logs" id="hud-logs">LOGS 0/5</div>
+        <div class="bond-status" id="hud-bond">CREW SUPPORT · AVAILABLE</div>
+        <div class="shield-status" id="hud-shield">SHIELD 0 · SPARE FILTER 1</div>
+      </div>
+      <div class="hint">A/D MOVE · E OPERATE · V SYSTEMS · B POWER · Z REST · SPACE EMP · Q DECOY · M AUDIO</div>
+    </div>
+
+    <div id="prompt" class="prompt hidden"><kbd>E</kbd><span id="prompt-text"></span></div>
+    <div id="toast" class="toast"></div>
+    <div id="banner" class="banner">
+      <h3 id="banner-kicker"></h3><h2 id="banner-title"></h2><p id="banner-sub"></p>
+    </div>
+  </div>
+
+  <!-- TUTORIAL SIDE DRAWER -->
+  <div id="tutorial-drawer" class="tut-drawer hidden">
+    <div class="tut-top">
+      <div class="tut-npc">
+        <canvas id="tut-portrait" width="108" height="126"></canvas>
+        <span class="tut-safe" id="tut-safe">PAUSED · HOSTILES HELD</span>
+      </div>
+      <div class="tut-copy">
+        <div class="tut-kicker" id="tut-kicker">TRAINING · MECHANIC 01</div>
+        <h3 id="tut-title">EATING</h3>
+        <div class="tut-npc-name" id="tut-npc-name">DR. INÉS VELA · BIOMEDICAL</div>
+        <p id="tut-body">—</p>
+      </div>
+    </div>
+    <canvas id="tut-demo" width="288" height="142"></canvas>
+    <ol id="tut-steps"></ol>
+    <div class="tut-keys" id="tut-keys">—</div>
+    <div class="tut-actions">
+      <button class="btn ghost" id="btn-tut-exit">SKIP</button>
+      <button class="btn primary" id="btn-tut-start">GOT IT</button>
+    </div>
+  </div>
+
+  <!-- MEDLI LANDING CINEMATIC -->
+  <div id="medli" class="medli hidden">
+    <canvas id="medli-canvas" width="960" height="540"></canvas>
+    <div class="medli-hud">
+      <div class="medli-kicker">ARES-7 · ENTRY, DESCENT &amp; LANDING</div>
+      <div class="medli-phase" id="medli-phase">APPROACH</div>
+      <div class="medli-sub" id="medli-sub">AEROSHELL SEPARATION IN 12s</div>
+    </div>
+    <div class="medli-telemetry" id="medli-telemetry"></div>
+    <div class="medli-log" id="medli-log"><b>MEDLI:</b> Three accelerometers armed. Heat shield at 1,650 °C.</div>
+    <div class="medli-actions">
+      <button class="btn ghost" id="btn-medli-skip">SKIP</button>
+      <button class="btn primary hidden" id="btn-medli-continue">CONTINUE</button>
+    </div>
+  </div>
+
+  <!-- SOL TRANSITION -->
+  <div id="sol-transition" class="sol-trans">
+    <div class="sol-sky-box"><div class="sol-orb"></div></div>
+    <div class="sol-trans-kicker" id="st-kicker">MARTIAN ROTATION COMPLETE</div>
+    <h1 class="sol-trans-num" id="st-title">SOL 01 - SOL 02</h1>
+    <div class="sol-trans-sub" id="st-sub">DAWN AT SECTOR ARES-1</div>
+    <div class="sol-trans-report" id="st-report"></div>
+  </div>
+
+  <!-- TITLE -->
+  <div id="screen-title" class="screen title">
+    <div class="kicker">MISSION ARES-7 · DOME ARES-1 · ACIDALIA PLANITIA</div>
+    <h1>SOL <span>ZERO</span></h1>
+    <p class="tagline">You are not the hero they expected.<br>You are the technician they need.</p>
+
+    <div class="diff-selector">
+      <div class="diff-lbl">SELECT PROTOCOL</div>
+      <div class="diff-btns" id="diff-btns">
+        <button class="diff-btn" data-diff="story">CADET</button>
+        <button class="diff-btn active" data-diff="normal">TECHNICIAN</button>
+        <button class="diff-btn" data-diff="hard">SURVIVAL</button>
+        <button class="diff-btn" data-diff="extreme">SOL ZERO</button>
+      </div>
+      <div class="diff-desc" id="diff-desc">Standard ARES-7 · balanced decay · stalkers beyond the airlock</div>
+    </div>
+
+    <div class="actions">
+      <button class="btn primary" id="btn-start">Start Mission</button>
+      <button class="btn hidden" id="btn-continue">Continue Last Sol</button>
+      <button class="btn" id="btn-dossier">Dossier</button>
+      <button class="btn ghost" id="btn-audio">Audio: ON</button>
+    </div>
+    <div class="title-foot">8 SOLS · PROGRESSIVE TRAINING · 25 NAMED REGIONS · NASA-DERIVED SYSTEMS</div>
+  </div>
+
+  <!-- INTRO -->
+  <div id="screen-intro" class="screen intro hidden">
+    <div class="kicker">PROLOGUE · 2063</div>
+    <div class="intro-lines" id="intro-lines"></div>
+    <div class="intro-actions">
+      <button class="btn ghost" id="btn-skip-intro">Skip</button>
+      <button class="btn primary hidden" id="btn-intro-next">Continue</button>
+    </div>
+  </div>
+
+  <!-- BRIEFING -->
+  <div id="screen-brief" class="screen brief hidden">
+    <div class="brief-grid">
+      <div>
+        <div class="kicker">APPROACH BRIEFING · SOL 1</div>
+        <h2>DOME <em>ARES-1</em></h2>
+        <p class="hl">The landing took a heavy toll. Engineer Tomás Ríos has his right arm immobilized. Dr. Inés Vela is treating him. Commander Yuki Hiraoka holds the dome under red alert.</p>
+        <p>Eight sols. One mechanic at a time. The dome will teach you how to stay alive before it asks you to keep four hundred million people alive.</p>
+        <div class="divider"></div>
+        <p><b style="color:#ffd08a">SOL 1 · EAT:</b> The galley is the only system online today. Eat a ration and watch your morale.</p>
+        <p><b style="color:#8fb4b0">SOL 2 · WATER:</b> Martian ice is full of perchlorates. The UV purifier burns them out of the meltwater.</p>
+        <p><b style="color:#ff9f45">SOL 3 · AIR:</b> Full O₂ does not mean clean air. CO₂ can kill with the tank at 100%.</p>
+        <p><b style="color:#f2d6b3">SOL 4 · POWER:</b> Dust blinds the panels. Shed loads before the battery hits zero. ARES-6 stalkers wake beyond the airlock.</p>
+        <p><b style="color:#ffd08a">SOL 5 · REST · 6 · CROPS · 7 · SIGNAL · 8 · SOL ZERO.</b> Sleep, plant, align the X-band dish, then hold the dome through a coronal mass ejection.</p>
+      </div>
+      <div>
+        <h4>BASE STATIONS</h4>
+        <div class="sys-li"><b>MESS GALLEY · x 320</b><span>rations, variety &amp; morale</span></div>
+        <div class="sys-li"><b>H₂O PURIFIER · x 470</b><span>UV perchlorate treatment</span></div>
+        <div class="sys-li"><b>ECLSS CONSOLE · x 620</b><span>pressure, O₂ &amp; CO₂ scrubbing</span></div>
+        <div class="sys-li"><b>BUNKS · x 770</b><span>sleep, rest window &amp; fatigue</span></div>
+        <div class="sys-li"><b>CREW QUARTERS · x 920</b><span>Ríos, Vela &amp; Hiraoka</span></div>
+        <div class="sys-li"><b>GREENHOUSE · x 1070</b><span>crops, water &amp; grow lamps</span></div>
+        <div class="sys-li"><b>SCIENCE LAB · x 1220</b><span>spectrometer efficiency boost</span></div>
+        <div class="sys-li"><b>AIRLOCK · x 1360</b><span>EVA to the surface</span></div>
+        <div class="sys-li"><b>SOLAR · WASTE · X-BAND · REACTOR</b><span>x 1700 · 1970 · 2280 · 2680</span></div>
+        <div class="sys-li"><b>SHELTER · MEDKIT</b><span>x 3000 · x 3240</span></div>
+        <h4 style="margin-top:.7em">QUICK CONTROLS</h4>
+        <div class="keys">
+          <kbd>A / D</kbd><span>walk the dome and the surface</span>
+          <kbd>E</kbd><span>operate station / take ration</span>
+          <kbd>V</kbd><span>systems console (water, air, crops, comms)</span>
+          <kbd>B / Z</kbd><span>power budget / sleep or rest</span>
+          <kbd>SPACE / Q</kbd><span>EMP pulse / decoy beacon</span>
+          <kbd>M / ESC</kbd><span>mute audio / exit or pause</span>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="btn-brief-start">Land at Ares-1</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DOSSIER -->
+  <div id="screen-dossier" class="screen dossier hidden">
+    <div class="dossier-body">
+      <h1>NARRATIVE &amp; SCIENTIFIC DOSSIER</h1>
+      <div class="sub">SOL ZERO · PROTOCOL ARES-7 · NASA-DERIVED SURVIVAL SYSTEMS</div>
+
+      <h3>01 — FOOD, VARIETY &amp; MORALE (NASA HRP)</h3>
+      <p><span class="em">Three identical rations in a row.</span> Repeated meals reduce acceptance: the third repeat costs 50% more time on the next task. The galley shows the current variety state before you choose. Skipping meals drains morale through the sol.</p>
+
+      <h3>02 — WATER RECYCLING (NASA ECLSS)</h3>
+      <p><span class="em">Ice is not water yet.</span> The purifier consumes electricity per batch and rejects perchlorate brine. Low purity slows crop growth and raises the cost of every repair that needs water.</p>
+
+      <h3>03 — SLEEP OR FINISH THE TASK (NASA HRP)</h3>
+      <p><span class="em">Sleep or work.</span> Working through the rest window accumulates fatigue; high fatigue forces a verification step after every repair. Sleeping restores performance but leaves faults open until the next sol.</p>
+
+      <h3>04 — DUST STORMS &amp; POWER BUDGET</h3>
+      <p><span class="em">The real danger is darkness.</span> Suspended dust and panel deposits slash solar generation. Clean the array, then shed the greenhouse, lab or rover dock before the battery empties.</p>
+
+      <h3>05 — OXYGEN AVAILABLE, HAZARDOUS AIR</h3>
+      <p><span class="em">Beyond O₂.</span> A CO₂ scrubber fault makes a module lethal even with tanks full. Isolate the module or spend one of the spare lithium-hydroxide cartridges.</p>
+
+      <h3>06 — RAD MONITOR &amp; REMS WEATHER</h3>
+      <p><span class="em">Two instruments, two jobs.</span> The RAD monitor reports interior and exterior dose plus cumulative exposure. The REMS station only announces weather events: dust storms cut solar, high winds slow EVA, extreme cold raises heating demand. Regions are charted as you cross them.</p>
+
+      <h3>07 — SCIENCE PAYLOAD &amp; MACHINE EFFICIENCY</h3>
+      <p><span class="em">Calibrate once, work faster.</span> The lab's spectrometer minigame measures five samples. A clean calibration reduces system decay for the rest of the sol.</p>
+
+      <h3>SECTOR REGISTRY — 25 CHARTED REGIONS</h3>
+      <div class="region-grid">
+        <span>Vastitas Borealis</span><span>Tantalus Fossae</span><span>Tempe Fossae</span><span>Acidalia Planitia</span><span>Utopia Planitia</span>
+        <span>Amazonis Planitia</span><span>Arabia Terra</span><span>Terra Sabaea</span><span>Elysium Volcanic Region</span><span>Nepenthes Mensae</span>
+        <span>Elysium Planitia</span><span>Tharsis Volcanic Region</span><span>Margaritifer Terra</span><span>Terra Meridiani</span><span>Valles Marineris</span>
+        <span>Tyrrhena Terra</span><span>Claritas Fossae</span><span>Terra Cimmeria</span><span>Terra Sirenum</span><span>Hellas Planitia</span>
+        <span>Icaria Fossae</span><span>Noachis Terra</span><span>Aonia Terra</span><span>Chronium Planum</span><span>Promethei Terra</span>
+      </div>
+
+      <div class="actions">
+        <button class="btn" id="btn-dossier-back">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MEAL -->
+  <div id="screen-meal" class="screen logview hidden">
+    <div class="panel-card">
+      <div class="who">MESS DECK · ARES-1 GALLEY</div>
+      <h3>CHOOSE TODAY'S RATION</h3>
+      <p class="panel-desc" id="meal-status">—</p>
+      <div class="ration-grid" id="meal-choices"></div>
+      <div class="panel-foot">
+        <span id="meal-stock">STOCK —</span>
+        <span id="meal-variety">VARIETY —</span>
+      </div>
+      <div class="actions">
+        <button class="btn" id="btn-meal-close">Leave · ESC</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GARDEN -->
+  <div id="screen-garden" class="screen logview hidden">
+    <div class="panel-card">
+      <div class="who">GREENHOUSE · HYDROPONIC BAY</div>
+      <h3>CULTIVATION CONTROL</h3>
+      <p class="panel-desc" id="garden-info">—</p>
+      <div class="plot-grid" id="garden-grid"></div>
+      <div id="garden-crop-btns" class="crop-btns"></div>
+      <div class="panel-foot">
+        <span id="garden-res">WATER — · ENERGY —</span>
+        <span id="garden-eff">GROWTH —</span>
+      </div>
+      <div class="actions">
+        <button class="btn" id="btn-garden-close">Close · ESC</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LAB -->
+  <div id="screen-lab" class="screen logview hidden">
+    <div class="panel-card">
+      <div class="who">SCIENCE LAB · CHEMCAM ARRAY</div>
+      <h3>SPECTROMETER CALIBRATION</h3>
+      <p class="panel-desc" id="lab-status">Align the five sample peaks inside the tolerance band.</p>
+      <canvas id="lab-canvas" width="640" height="240"></canvas>
+      <div class="lab-foot">
+        <span id="lab-eff">MACHINE EFFICIENCY —</span>
+        <span>CLICK / SPACE AT THE PEAK · ESC ABORT</span>
+      </div>
+      <div class="actions">
+        <button class="btn" id="btn-lab-close">Abort · ESC</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EMOTIONAL SUPPORT -->
+  <div id="screen-emotion" class="screen logview hidden">
+    <div class="log-card emo-card">
+      <div class="who" id="emo-who">CREW BOND · EMOTIONAL SUPPORT</div>
+      <h3 id="emo-title">—</h3>
+      <div class="body" id="emo-prompt">—</div>
+      <div class="emo-choices" id="emo-choices"></div>
+      <div class="emo-reply-box hidden" id="emo-reply"></div>
+      <div class="actions">
+        <button class="btn primary hidden" id="btn-emo-close">Return to Dome · ESC</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- REST -->
+  <div id="screen-rest" class="screen logview hidden">
+    <div class="log-card nasa-card">
+      <div class="who">NASA HRP · SLEEP, FATIGUE &amp; PERFORMANCE</div>
+      <h3>SLEEP OR CONTINUE WORKING</h3>
+      <div class="body" id="rest-status-body">—</div>
+      <div class="emo-choices" id="rest-choices"></div>
+      <div class="actions">
+        <button class="btn" id="btn-rest-close">Close · ESC</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- POWER -->
+  <div id="screen-power" class="screen logview hidden">
+    <div class="log-card nasa-card">
+      <div class="who">NASA POWER GRID · ELECTRICAL BUDGET &amp; DUST OPACITY</div>
+      <h3>DOME ELECTRICAL LOAD PRIORITY</h3>
+      <div class="body" id="power-desc">Dust cuts solar generation. Clean the array at x 1700, then shed non-critical loads before the battery empties.</div>
+      <div class="power-summary" id="power-summary"></div>
+      <div class="load-list" id="power-loads-list"></div>
+      <div class="actions">
+        <button class="btn primary" id="btn-power-close">Confirm Priorities · B / ESC</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ECLSS -->
+  <div id="screen-eclss" class="screen logview hidden">
+    <div class="log-card nasa-card">
+      <div class="who">NASA ECLSS · PRESSURE, O₂ &amp; CO₂ SCRUBBING</div>
+      <h3>AIR QUALITY &amp; MODULE ISOLATION</h3>
+      <div class="body" id="eclss-status-body">—</div>
+      <div class="emo-choices" id="eclss-choices"></div>
+      <div class="actions">
+        <button class="btn" id="btn-eclss-close">Close · V / ESC</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOG -->
+  <div id="screen-log" class="screen logview hidden">
+    <div class="log-card">
+      <div class="who" id="log-who">CREW LOG</div>
+      <h3 id="log-title">—</h3>
+      <div class="body" id="log-body">—</div>
+      <div class="actions"><button class="btn" id="btn-log-close">Close · E / ESC</button></div>
+    </div>
+  </div>
+
+  <!-- PAUSE -->
+  <div id="screen-pause" class="screen hidden">
+    <div class="pause-card">
+      <h1>PAUSED</h1>
+      <p>THE CLOCK STOPS. THE DOME DOES NOT.</p>
+      <button class="btn primary" id="btn-resume">Resume</button>
+    </div>
+  </div>
+
+  <!-- END -->
+  <div id="screen-end" class="screen end hidden">
+    <div class="end-kicker" id="end-kicker">END OF TRANSMISSION</div>
+    <h1 id="end-title">—</h1>
+    <div class="end-body" id="end-body">—</div>
+    <div class="stats" id="end-stats"></div>
+    <div class="actions">
+      <button class="btn primary" id="btn-restart">Restart Mission</button>
+    </div>
+  </div>
+
+  <div class="fx"></div>
+</div>
+
+<script src="js/audio.js"></script>
+<script src="js/data.js"></script>
+<script src="js/world.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
